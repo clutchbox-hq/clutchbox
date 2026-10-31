@@ -49,8 +49,13 @@ export const ENSURE_CHROME_MS = 45_000;
 // stalled X server should fail the action, not hang the call.
 export const XDOTOOL_MS = 20_000;
 
-// Setting the system time zone: a symlink and a one-line file, which take well under a second.
+// Setting the system time zone: a symlink and a one-line file, which take well under a second. Restarting Chrome on
+// the new zone, when it runs on another, has the rest of the caller's budget.
 export const TIME_ZONE_MS = 10_000;
+
+// The least time worth starting set-languages.mjs with: a background settings tab loads and takes the pref in about a
+// second on a local Chrome 156; this leaves headroom for a busy computer.
+export const LANGUAGES_HELPER_MIN_MS = 5_000;
 
 // Switching the screen (set-screen.sh): a few xrandr requests and the half-second wait before waking the dock, about
 // 0.6 s in all (5 ms at the size already), measured October 2026.

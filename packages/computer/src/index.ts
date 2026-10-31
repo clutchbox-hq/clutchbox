@@ -112,8 +112,14 @@ export interface ComputerSession {
   // Brings a computer made from an older template to the provider's revision, restarting the browser (its
   // profile and sign-ins stay, its tabs close). Nothing may run on the computer later than budgetMs after.
   refresh(budgetMs: number): Promise<'current' | 'refreshed'>;
-  // Sets the system time zone (a valid IANA name), which a running Chrome follows at once.
-  setTimeZone(timeZone: string): Promise<void>;
+  // Sets the system time zone (a valid IANA name) and restarts a running Chrome on another zone, since Chrome keeps the
+  // zone it started with: gracefully, so its profile and lasting cookies stay, but its tabs and session cookies don't.
+  // Done, or failed, within budgetMs.
+  setTimeZone(timeZone: string, budgetMs: number): Promise<void>;
+  // Makes `languages` (language tags, most preferred first) the preferred languages of Chrome on `profile`: at once
+  // when Chrome runs it, and from its next start otherwise. Chrome's own locale, which pages' Intl follows, changes only
+  // at that next start. Done, or failed, within budgetMs.
+  setLanguages(profile: string, languages: string[], budgetMs: number): Promise<void>;
   // Switches the screen to `screen`; windows and the browser keep running, and Chrome stays maximized. False, changing
   // nothing, on a computer whose desktop started smaller than the screen.
   setScreen(screen: ScreenSize): Promise<boolean>;

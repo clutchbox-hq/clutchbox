@@ -310,6 +310,7 @@ function setup(installed: { [key: string]: unknown } = {}) {
       })),
       reload: vi.fn(),
     },
+    i18n: { getAcceptLanguages: vi.fn(async () => ['de-DE', 'en']) },
     fetch: route,
   };
   const restart = (distribution: Distribution = 'manual', version = '0.5.0') =>
@@ -489,6 +490,18 @@ describe('added sites', () => {
       'capture.test',
       '.sub.capture.test',
     ]);
+  });
+  it("reports this browser's time zone and preferred languages with its settings fetch, never as headers", async () => {
+    const test = await connected();
+    const fetched = test.requests.filter(({ url, init }) => url.startsWith(`${origin}/api/v1/sync?`) && !init.method);
+    expect(fetched.length).toBeGreaterThan(0);
+    const query = new URL(fetched.at(-1)!.url).searchParams;
+    expect(Object.fromEntries(query)).toEqual({
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      languages: 'de-DE,en',
+    });
+    // A new custom header would need a CORS preflight, which servers from before this refuse.
+    expect(Object.keys(fetched.at(-1)!.init.headers as object).sort()).toEqual(['authorization', 'x-organization']);
   });
   it('removing a site removes it from the account and revokes its grant before uploading the rest', async () => {
     const test = await connected();

@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures';
-import { removeBrowser } from './browsers';
+import { recordBrowserLocale, removeBrowser } from './browsers';
 import { bundle, cookie } from './capture-fixtures';
 import { deleteCaptures } from './captures';
 import {
@@ -1374,6 +1374,35 @@ describe('apply on open', () => {
     await setTimeZone(db, a.userId, 'Europe/London');
     await reopen(a);
     expect(sandbox().timeZone).toBe('Europe/London');
+  });
+  it("follows the session's browser's time zone and languages over the web app's, before its cookies, once each", async () => {
+    const a = await user('a');
+    await setTimeZone(db, a.userId, 'America/Los_Angeles');
+    const browser = await syncingBrowser(db, a);
+    await saveFromBrowser(db, a, bundle([cookie()]));
+    // Invalid parts are left out, and a part that didn't come keeps the last one.
+    await recordBrowserLocale(db, browser.id, { timeZone: 'Not/AZone', languages: ['de-DE', 'de'] });
+    await recordBrowserLocale(db, browser.id, { timeZone: 'Europe/Berlin' });
+    await reopen(a);
+    expect(sandbox().timeZone).toBe('Europe/Berlin');
+    expect(sandbox().languages).toEqual({ [FIRST_PROFILE]: ['de-DE', 'de'] });
+    // The zone's Chrome restart comes before the cookies it would drop, and the languages after the profile switch.
+    expect(fake.calls.steps).toEqual(['refresh', 'zone', 'profile', 'languages', 'sync']);
+    const [profile] = await db
+      .select()
+      .from(schema.computerProfiles)
+      .where(isNotNull(schema.computerProfiles.computerId));
+    expect(profile!.languages).toEqual(['de-DE', 'de']);
+    await reopen(a);
+    expect(fake.calls.timeZones).toEqual(['Europe/Berlin']);
+    expect(fake.calls.languages).toHaveLength(1);
+    // A browser that never reported a zone leaves the web app's.
+    await db
+      .update(schema.connectedBrowsers)
+      .set({ timeZone: null })
+      .where(eq(schema.connectedBrowsers.id, browser.id));
+    await reopen(a);
+    expect(sandbox().timeZone).toBe('America/Los_Angeles');
   });
   it('brings a computer behind the provider revision current on open, before the apply, and retries a failure', async () => {
     const a = await user('a');

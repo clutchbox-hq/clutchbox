@@ -516,6 +516,7 @@ export interface ExchangeResponse {
   // The tab the connect click came from, to return to.
   opener?: number;
 }
+export * from './locale';
 export * from './oauth';
 export * from './servers';
 export * from './sites';

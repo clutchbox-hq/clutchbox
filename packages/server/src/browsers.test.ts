@@ -21,6 +21,7 @@ import {
   EXTENSION_CLIENT_ID,
   ensureExtensionClient,
   listBrowsers,
+  recordBrowserLocale,
   removeAllBrowsers,
   removeBrowser,
   SYNC_ACCESS_TOKEN_SECONDS,
@@ -555,6 +556,7 @@ describe('connected browsers', () => {
     await upload(one, mine);
     await upload(one, work);
     await agentGrant('a');
+    await recordBrowserLocale(db, found.browser.id, { timeZone: 'Europe/Berlin', languages: ['de-DE'] });
     await signOutBrowser(db, 'a', found.browser.id);
     expect(await principal(one)).toBeNull();
     expect((await refresh(one.refresh_token)).status).toBe(400);
@@ -569,6 +571,8 @@ describe('connected browsers', () => {
     expect(tombstone).toMatchObject({
       browser: null,
       platform: null,
+      timeZone: null,
+      languages: null,
       lastSyncedAt: null,
       disconnectedAt: expect.any(Date),
     });

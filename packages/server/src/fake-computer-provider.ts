@@ -28,6 +28,8 @@ type FakeSandbox = {
   // Created before computers were private, so live view refuses it.
   public?: boolean;
   timeZone?: string;
+  // Each profile's preferred languages, as setLanguages left them.
+  languages?: Record<string, string[]>;
   // What live view's paste last set as the clipboard.
   clipboard?: ClipboardContent;
   // The helper revision it runs: the provider's when it was created, like a current template.
@@ -43,7 +45,7 @@ type Size = { width: number; height: number };
 // What a snapshot keeps of its computer: the browser's state and the system's.
 type FakeSnapshot = Pick<
   FakeSandbox,
-  'tabs' | 'profile' | 'cookies' | 'profiles' | 'revision' | 'timeZone' | 'public' | 'screen' | 'desktop'
+  'tabs' | 'profile' | 'cookies' | 'profiles' | 'revision' | 'timeZone' | 'languages' | 'public' | 'screen' | 'desktop'
 >;
 // A PNG's signature and header chunk, all of a screenshot that pngSize reads.
 const fakePng = ({ width, height }: Size) => {
@@ -82,10 +84,12 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
     cdpEndpoints: [] as string[],
     syncBudgets: [] as (number | undefined)[],
     timeZones: [] as string[],
+    // Each setLanguages, with the profile and the languages.
+    languages: [] as { profile: string; languages: string[] }[],
     // Each setScreen, with the screen asked for.
     screens: [] as string[],
-    // Refreshes, profile switches, and cookie syncs, in order.
-    steps: [] as ('refresh' | 'profile' | 'sync')[],
+    // Refreshes, profile switches, zone and language changes, and cookie syncs, in order.
+    steps: [] as ('refresh' | 'profile' | 'zone' | 'languages' | 'sync')[],
     // Each useProfile, with the sandbox and the profile asked for: the profile each session ran on.
     profiles: [] as { sandboxId: string; profile: string }[],
   };
@@ -167,7 +171,18 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
       // Like E2B: a paused computer is resumed to take it.
       sandbox.paused = false;
       const id = `${account}snapshot-${calls.snapshot}`;
-      const { tabs, profile, cookies, profiles, revision: helpers, timeZone, public: open, screen, desktop } = sandbox;
+      const {
+        tabs,
+        profile,
+        cookies,
+        profiles,
+        revision: helpers,
+        timeZone,
+        languages,
+        public: open,
+        screen,
+        desktop,
+      } = sandbox;
       snapshots.set(
         id,
         structuredClone({
@@ -179,6 +194,7 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
           screen,
           desktop,
           ...(timeZone ? { timeZone } : {}),
+          ...(languages ? { languages } : {}),
           ...(open ? { public: open } : {}),
         }),
       );
@@ -248,10 +264,18 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
           sandbox.screen = { ...size };
           return true;
         },
+        // Like E2B's: Chrome restarts on a new zone, so its tabs close.
         async setTimeZone(timeZone) {
+          calls.steps.push('zone');
           calls.timeZones.push(timeZone);
           if (timeZoneFails) throw new Error('setTimeZone failed in fake');
+          if (sandbox.timeZone !== timeZone) sandbox.tabs = ['about:blank'];
           sandbox.timeZone = timeZone;
+        },
+        async setLanguages(profile, languages) {
+          calls.steps.push('languages');
+          calls.languages.push({ profile, languages });
+          sandbox.languages = { ...sandbox.languages, [profile]: languages };
         },
         async stream() {
           calls.streams.push(sandboxId);

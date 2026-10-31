@@ -274,6 +274,20 @@
       "when": 1793423971374,
       "tag": "0038_computer_screen",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793490941326,
+      "tag": "0039_browser_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793490942204,
+      "tag": "0040_profile_languages",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./locale": "./src/locale.ts",
     "./sites": "./src/sites.ts"
   },
   "scripts": {

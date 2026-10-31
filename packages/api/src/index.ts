@@ -5,7 +5,9 @@ import {
   compareVersions,
   defaultExtensionConfig,
   extensionVersionHeader,
+  localeParams,
   organizationHeader,
+  parseLocale,
   siteOfHost,
   syncChangeSchema,
   syncSettingsSchema,
@@ -32,6 +34,7 @@ import {
   BROWSER_ID_PATTERN,
   browserRemoved,
   listBrowsers,
+  recordBrowserLocale,
   removeAllBrowsers,
   removeBrowser,
   type SyncPrincipal,
@@ -813,6 +816,12 @@ export function createApi({
   app.get('/sync', async c => {
     const member = await memberOf(c);
     const { browser } = c.get('principal');
+    if (browser)
+      await recordBrowserLocale(
+        db,
+        browser.id,
+        parseLocale({ timeZone: c.req.query(localeParams.timeZone), languages: c.req.query(localeParams.languages) }),
+      );
     const removed = browser && (await browserRemoved(db, browser.id, member)) ? { removed: true } : {};
     return c.json({ ...(await syncView(db, member)), ...removed, config: defaultExtensionConfig, ...latest });
   });

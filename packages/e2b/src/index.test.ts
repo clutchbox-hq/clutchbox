@@ -220,7 +220,7 @@ describe('E2B adapter', () => {
   });
   it('keeps key names and time zones off the command line unless they are plain names', async () => {
     // Like xdotool, which ignores a key name it doesn't know with a warning, and exits 0.
-    const run = vi.fn(async (command: string) => ({
+    const run = vi.fn(async (command: string, _options?: { user?: string; timeoutMs: number }) => ({
       exitCode: 0,
       stdout: '',
       stderr: command.includes('Nope') ? "(symbol) No such key name 'Nope'. Ignoring it.\n" : '',
@@ -249,10 +249,39 @@ describe('E2B adapter', () => {
     await expect(session.act({ type: 'key', keys: ['ctrl', 'Nope'] })).rejects.toThrow('Unknown key name');
     // Run as root on a path built from the name.
     run.mockClear();
-    await expect(session.setTimeZone('../../../etc/shadow')).rejects.toThrow('time zone');
+    await expect(session.setTimeZone('../../../etc/shadow', 30_000)).rejects.toThrow('time zone');
     expect(run).not.toHaveBeenCalled();
-    await session.setTimeZone('America/Los_Angeles');
-    expect(run).toHaveBeenCalledTimes(1);
+    // The zone as root, then, as the desktop user, a restart of a Chrome on another zone within the rest of the budget.
+    await session.setTimeZone('America/Los_Angeles', 30_000);
+    expect(run.mock.calls.map(([command, options]) => [command, options?.user])).toEqual([
+      [
+        "test -f '/usr/share/zoneinfo/America/Los_Angeles' && ln -sf '/usr/share/zoneinfo/America/Los_Angeles' /etc/localtime && echo 'America/Los_Angeles' > /etc/timezone",
+        'root',
+      ],
+      [
+        'if [ -x /opt/agent-computers/match-zone.sh ]; then /opt/agent-computers/match-zone.sh America/Los_Angeles 10; fi',
+        'user',
+      ],
+    ]);
+    for (const [, options] of run.mock.calls) expect(options!.timeoutMs).toBeLessThanOrEqual(30_000);
+    // Languages reach a file and a shell, so only plain tags, and as many as a browser reports.
+    run.mockClear();
+    for (const languages of [[], ['en;q=0.9'], ['$(id)'], Array.from({ length: 11 }, () => 'en')])
+      await expect(session.setLanguages('default', languages, 15_000)).rejects.toThrow('Invalid languages');
+    await expect(session.setLanguages('../x', ['en'], 15_000)).rejects.toThrow('Invalid profile');
+    expect(run).not.toHaveBeenCalled();
+    await session.setLanguages('brw_0abc', ['de-DE', 'de'], 15_000);
+    const [command, options] = run.mock.calls[0]!;
+    expect(options).toMatchObject({ user: 'user', timeoutMs: 15_000 });
+    // Recorded for the profile under the lock profile switches take; set live only while Chrome runs that profile.
+    expect(command).toContain(
+      'flock -w 5 9 || exit 1; echo de-DE,de > /home/user/.agent-computers/languages-brw_0abc.new',
+    );
+    expect(command).toContain(
+      'test "$(cat /home/user/.agent-computers/chrome-profile 2>/dev/null || echo default)" = brw_0abc && test -f /opt/agent-computers/set-languages.mjs',
+    );
+    expect(command).toMatch(/exec node \/opt\/agent-computers\/set-languages\.mjs de-DE,de (\d+) 9>&-$/);
+    expect(Number(command.match(/set-languages\.mjs de-DE,de (\d+)/)![1])).toBeLessThan(15_000 - 5_000);
   });
   it('switches the screen only to a size the desktop holds, adding its mode once (E2B adapter)', async () => {
     // set-screen.sh against a stand-in xrandr that logs its arguments and, queried with none, reports a desktop started

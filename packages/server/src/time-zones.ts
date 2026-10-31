@@ -1,13 +1,13 @@
 import 'server-only';
+import { timeZonePattern } from '@clutchbox/capture/locale';
 import { sql } from 'drizzle-orm';
 import type { Database } from './database';
 import { userSettings } from './schema';
 
 // An IANA zone name, like America/Los_Angeles, UTC, or Etc/GMT+5. It becomes a path on the computer, so the
 // pattern (the same as the columns' CHECK) admits no dots or spaces; Intl rejects names that are not zones.
-const NAME = /^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/;
 export function isTimeZone(value: string) {
-  if (!NAME.test(value)) return false;
+  if (!timeZonePattern.test(value)) return false;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value });
     return true;
@@ -16,8 +16,8 @@ export function isTimeZone(value: string) {
   }
 }
 
-// The account page reports the browser's time zone on every visit; the next computer_open sets the
-// computer to it (computers.ts, applyTimeZone). Writes only when it changed.
+// The account page reports its browser's time zone on every visit: the zone a computer takes when its session's
+// profile has none of its own (computers.ts, applyTimeZone). Writes only when it changed.
 export async function setTimeZone(db: Database, userId: string, timeZone: string) {
   await db
     .insert(userSettings)

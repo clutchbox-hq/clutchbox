@@ -19,14 +19,24 @@ const PROFILES = '0027_profiles';
 let pg: PGlite;
 let db: Database;
 let before: string;
+// Later migrations that change the tables this one creates, which run after it.
+let later: string[];
+const statements = (tag: string) =>
+  readFileSync(join(migrations, `${tag}.sql`), 'utf8').split('--> statement-breakpoint');
 beforeAll(async () => {
-  // The migrations up to the one before, then this one's statements on what they left.
+  // Every other migration, then this one's statements on what they left, then the later ones that need it.
   before = mkdtempSync(join(tmpdir(), 'migrations-'));
   cpSync(migrations, before, { recursive: true });
   const journal = JSON.parse(readFileSync(join(before, 'meta/_journal.json'), 'utf8'));
-  journal.entries = journal.entries.filter((entry: { tag: string }) => entry.tag !== PROFILES);
+  const tags: string[] = journal.entries.map((entry: { tag: string }) => entry.tag);
+  later = tags
+    .slice(tags.indexOf(PROFILES) + 1)
+    .filter(tag => statements(tag).some(statement => statement.includes('"computer_profiles"')));
+  journal.entries = journal.entries.filter(
+    (entry: { tag: string }) => entry.tag !== PROFILES && !later.includes(entry.tag),
+  );
   writeFileSync(join(before, 'meta/_journal.json'), JSON.stringify(journal));
-  rmSync(join(before, `${PROFILES}.sql`));
+  for (const tag of [PROFILES, ...later]) rmSync(join(before, `${tag}.sql`));
   pg = new PGlite();
   db = drizzle(pg, { schema: databaseSchema }) as unknown as Database;
   await migrate(drizzle(pg), { migrationsFolder: before });
@@ -122,8 +132,7 @@ it('keeps every computer signed in as its first profile, owned by the browser th
   const e = await person(db, 'e');
   await db.insert(schema.computers).values({ publicId: newPublicId('computer'), membershipId: e.membershipId });
 
-  for (const statement of readFileSync(join(migrations, `${PROFILES}.sql`), 'utf8').split('--> statement-breakpoint'))
-    await pg.exec(statement);
+  for (const tag of [PROFILES, ...later]) for (const statement of statements(tag)) await pg.exec(statement);
 
   const captures = await db.select().from(schema.browserCaptures).orderBy(schema.browserCaptures.membershipId);
   expect(captures).toMatchObject([

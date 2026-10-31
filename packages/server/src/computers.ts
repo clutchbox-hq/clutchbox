@@ -24,6 +24,7 @@ import {
   type Profile,
   sealAppliedCapture,
 } from './captures';
+import { textArray } from './columns';
 import {
   CALL_BUDGET_MS,
   CALL_HOLD_MS,
@@ -34,6 +35,7 @@ import {
   HOLD_EXTEND_STEP_MS,
   HOLD_LAPSE_MS,
   IDLE_PAUSE_MS,
+  LANGUAGES_BUDGET_MS,
   PROFILE_SWITCH_BUDGET_MS,
   REFRESH_BUDGET_MS,
   RELEASED_LEASE_MS,
@@ -43,6 +45,7 @@ import {
   SYNC_DEADLINE_MS,
   SYNC_MIN_MS,
   SYNC_SLACK_MS,
+  TIME_ZONE_BUDGET_MS,
 } from './computer-timing';
 import type { Database } from './database';
 import { type Limits, type Metering, noLimits, type ServerHooks, utcDay } from './hooks';
@@ -678,7 +681,6 @@ export async function openComputerSession(
           chosenScreen(db, caller)
             .then(chosen => applyScreen(handle.session, chosen))
             .then(() => true),
-      applyTimeZone(db, computer.id, handle.session),
     ]);
     return {
       sessionId: started.publicId,
@@ -1022,6 +1024,7 @@ async function createFork(
           appliedCaptureAt: row.appliedCaptureAt,
           syncedSites: row.syncedSites,
           appliedCapture: resealBaseline(row.appliedCapture, caller, current.mainPublicId, publicId),
+          languages: row.languages,
         })),
       );
     const started = await startSession(tx, caller, fork!, undefined, now, choice);
@@ -1505,9 +1508,10 @@ async function switchProfile(session: ComputerSession, chromeProfile: string, de
   await withinBudget(session.useProfile(chromeProfile, budget), budget + SYNC_SLACK_MS);
 }
 
-// At a session's start, with the computer's Chrome on its profile (or FIRST_PROFILE without one): first each profile of a
-// browser that stopped syncing is signed out of what it synced, each in its own Chrome; then the session's profile gets
-// its browser's latest capture. The summary is that apply's, or without a profile, the sign-outs'.
+// At a session's start, with the computer's Chrome on its profile (or FIRST_PROFILE without one): first the computer
+// takes the profile's time zone, whose restart would drop cookies applied before it; then each profile of a browser
+// that stopped syncing is signed out of what it synced, each in its own Chrome; then the session's profile gets its
+// browser's languages and latest capture. The summary is that apply's, or without a profile, the sign-outs'.
 async function applyProfiles(
   db: Database,
   member: Owner,
@@ -1517,6 +1521,7 @@ async function applyProfiles(
   profiles: Profile[],
   deadline: number,
 ): Promise<SyncSummary> {
+  await applyTimeZone(db, computer.id, session, profile?.browserId ?? null, deadline);
   const rows = await db
     .select(profileColumns)
     .from(schema.computerProfiles)
@@ -1541,6 +1546,7 @@ async function applyProfiles(
   }
   const row = await profileRow(db, computer.id, profile, rows);
   await switchProfile(session, row.chromeProfile, deadline);
+  await applyLanguages(db, row, session, profile.browserId, deadline);
   return applyLatestCapture(db, member, computer, row, profile.browserId, session, deadline);
 }
 // Live view's apply, on a computer no agent is working on: to the profile a session there would get (pickProfile).
@@ -1576,11 +1582,6 @@ const withinBudget = <T>(work: Promise<T>, ms: number): Promise<T> => {
     }),
   ]).finally(() => clearTimeout(timer));
 };
-const textArray = (values: string[]) =>
-  sql`array[${sql.join(
-    values.map(value => sql`${value}`),
-    sql`, `,
-  )}]::text[]`;
 const unionSites = (sites: string[]) =>
   sql`array(select distinct unnest(${schema.computerProfiles.syncedSites} || ${textArray(sites)}))`;
 const sameBaseline = (row: Pick<ProfileRow, 'id' | 'appliedCaptureDigest'>) =>
@@ -1787,21 +1788,62 @@ async function applyScreen(session: ComputerSession, screen: ScreenSize) {
   }
 }
 
-// The user's browser time zone (time-zones.ts) as the computer's system zone, set only when it changed. Without
-// a reported zone the computer keeps the template's UTC. A failure never blocks the open; the next one retries.
-async function applyTimeZone(db: Database, computerId: number, session: ComputerSession) {
+// The computer's system time zone: the session's profile's browser's (browsers.ts, recordBrowserLocale), else the one
+// the web app last reported (time-zones.ts), set only when it changed. Without either the computer keeps the template's
+// UTC. A failure never blocks the open; the next one retries.
+async function applyTimeZone(
+  db: Database,
+  computerId: number,
+  session: ComputerSession,
+  browserId: number | null,
+  deadline: number,
+) {
   try {
     const [row] = await db
-      .select({ wanted: schema.userSettings.timeZone, applied: schema.computers.timeZone })
+      .select({
+        browser: schema.connectedBrowsers.timeZone,
+        user: schema.userSettings.timeZone,
+        applied: schema.computers.timeZone,
+      })
       .from(schema.computers)
       .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
       .leftJoin(schema.userSettings, eq(schema.userSettings.userId, schema.memberships.userId))
+      .leftJoin(schema.connectedBrowsers, eq(schema.connectedBrowsers.id, browserId ?? -1))
       .where(eq(schema.computers.id, computerId));
-    if (!row?.wanted || row.wanted === row.applied) return;
-    await session.setTimeZone(row.wanted);
-    await db.update(schema.computers).set({ timeZone: row.wanted }).where(eq(schema.computers.id, computerId));
+    const wanted = row?.browser ?? row?.user;
+    if (!wanted || wanted === row?.applied) return;
+    const budget = Math.min(TIME_ZONE_BUDGET_MS, deadline - Date.now());
+    if (budget <= 0) return;
+    await withinBudget(session.setTimeZone(wanted, budget), budget + SYNC_SLACK_MS);
+    await db.update(schema.computers).set({ timeZone: wanted }).where(eq(schema.computers.id, computerId));
   } catch (error) {
     logError('time zone', error);
+  }
+}
+
+// The profile's browser's languages (browsers.ts, recordBrowserLocale) on its Chrome profile, with Chrome running it,
+// set only when they changed. A browser that never reported them leaves Chrome's own. A failure never blocks the open;
+// the next one retries.
+async function applyLanguages(
+  db: Database,
+  row: Pick<ProfileRow, 'id' | 'chromeProfile' | 'languages'>,
+  session: ComputerSession,
+  browserId: number,
+  deadline: number,
+) {
+  try {
+    const [browser] = await db
+      .select({ languages: schema.connectedBrowsers.languages })
+      .from(schema.connectedBrowsers)
+      .where(eq(schema.connectedBrowsers.id, browserId));
+    const wanted = browser?.languages;
+    if (!wanted?.length || wanted.join(',') === row.languages?.join(',')) return;
+    const budget = Math.min(LANGUAGES_BUDGET_MS, deadline - Date.now());
+    if (budget <= 0) return;
+    await withinBudget(session.setLanguages(row.chromeProfile, wanted, budget), budget + SYNC_SLACK_MS);
+    await db.update(schema.computerProfiles).set({ languages: wanted }).where(eq(schema.computerProfiles.id, row.id));
+  } catch (error) {
+    logError('languages', error);
   }
 }
 
@@ -2086,7 +2128,6 @@ async function extendHolds(
     await Promise.all([
       !woken.row.forkOf && applyMainScreen(db, woken.row.id, woken.session, now),
       woken.fresh && applyForLiveView(db, member, woken.row, woken.session, deadline),
-      woken.fresh && applyTimeZone(db, woken.row.id, woken.session),
     ]);
   } catch (error) {
     logError('live view apply', error);
@@ -2167,10 +2208,7 @@ export async function takeOverComputer(
     try {
       // As computer_open does: before the apply, which needs the browser this may restart.
       await refreshComputer(db, provider, row, started.session);
-      await Promise.all([
-        applyForLiveView(db, member, row, started.session, deadline),
-        applyTimeZone(db, row.id, started.session),
-      ]);
+      await applyForLiveView(db, member, row, started.session, deadline);
     } catch (error) {
       // The computer is unreachable: give the takeover back rather than hold a computer nobody can use.
       await handBackComputer(db, computers, member, lease, target).catch(endError =>

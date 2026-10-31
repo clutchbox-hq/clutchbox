@@ -217,6 +217,21 @@ describe('extension routes over OAuth', () => {
     expect(me.headers.get('access-control-allow-origin')).toBe(extension);
     expect(me.headers.get('set-cookie')).toBeNull();
     expect((await request('GET', '/sync', { token: tokens })).status).toBe(200);
+    // The settings fetch reports the browser's time zone and languages, kept until a later fetch changes them.
+    const locale = async () =>
+      (
+        await db
+          .select({ timeZone: schema.connectedBrowsers.timeZone, languages: schema.connectedBrowsers.languages })
+          .from(schema.connectedBrowsers)
+      )[0];
+    expect(await locale()).toEqual({ timeZone: null, languages: null });
+    expect((await request('GET', '/sync?time_zone=Europe/Berlin&languages=de-DE,de', { token: tokens })).status).toBe(
+      200,
+    );
+    expect(await locale()).toEqual({ timeZone: 'Europe/Berlin', languages: ['de-DE', 'de'] });
+    await request('GET', '/sync?time_zone=Nowhere/Here&languages=$(id)', { token: tokens });
+    await request('GET', '/sync', { token: tokens });
+    expect(await locale()).toEqual({ timeZone: 'Europe/Berlin', languages: ['de-DE', 'de'] });
     expect(await json(await request('POST', '/sync/adopt', { token: tokens, body: { settings: local } }))).toEqual({
       status: 200,
       body: { settings: local },

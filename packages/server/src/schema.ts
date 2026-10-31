@@ -1,3 +1,4 @@
+import { MAX_LANGUAGES } from '@clutchbox/capture/locale';
 import { COMPUTER_SIZE_NAMES, DEFAULT_SCREEN, SCREEN_NAMES } from '@clutchbox/computer';
 import { relations, sql } from 'drizzle-orm';
 import {
@@ -398,6 +399,8 @@ export const computerProfiles = pgTable(
     appliedCaptureAt: time('applied_capture_at'),
     syncedSites: text('synced_sites').array().notNull().default(sql`'{}'::text[]`),
     appliedCapture: text('applied_capture'),
+    // The browser's languages last set on this Chrome profile (computers.ts, applyLanguages); null for none yet.
+    languages: text('languages').array(),
     ...timestamps(),
   },
   table => [
@@ -516,6 +519,10 @@ export const connectedBrowsers = pgTable(
     // From the User-Agent at first use; null when unknown, and cleared on sign-out.
     browser: text('browser', { enum: BROWSER_NAMES }),
     platform: text('platform', { enum: BROWSER_PLATFORMS }),
+    // The browser's time zone and preferred languages, as its extension last reported them (browsers.ts,
+    // recordBrowserLocale); its profile on a computer copies them. Null until a build that reports them syncs.
+    timeZone: text('time_zone'),
+    languages: text('languages').array(),
     lastSyncedAt: time('last_synced_at'),
     // Tombstone of signing out: the family never syncs again, even when a racing rotation recreates its tokens.
     disconnectedAt: time('disconnected_at'),
@@ -526,6 +533,11 @@ export const connectedBrowsers = pgTable(
     index('connected_browsers_membership_idx').on(table.membershipId),
     check('connected_browsers_browser', oneOf(table.browser, BROWSER_NAMES)),
     check('connected_browsers_platform', oneOf(table.platform, BROWSER_PLATFORMS)),
+    check('connected_browsers_time_zone', timeZoneName(table.timeZone)),
+    check(
+      'connected_browsers_languages',
+      sql`cardinality(${table.languages}) BETWEEN 1 AND ${sql.raw(String(MAX_LANGUAGES))}`,
+    ),
   ],
 );
 // A connected browser in one of the person's organizations: recorded at its first upload there, and listed on that

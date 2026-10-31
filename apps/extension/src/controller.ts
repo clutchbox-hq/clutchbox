@@ -20,6 +20,7 @@ import {
   extensionVersionHeader,
   flowTtlMs,
   issuerOf,
+  localeQuery,
   meSchema,
   newState,
   type Organization,
@@ -163,6 +164,7 @@ export interface CaptureBrowser {
   tabs: Pick<typeof chrome.tabs, 'create' | 'query' | 'get'>;
   action: Pick<typeof chrome.action, 'setBadgeText'>;
   runtime: Pick<typeof chrome.runtime, 'requestUpdateCheck' | 'reload'>;
+  i18n: Pick<typeof chrome.i18n, 'getAcceptLanguages'>;
   fetch: typeof fetch;
 }
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -755,11 +757,18 @@ class Connection {
     return 'done';
   }
   // The account's settings, fetched with the server's config, adopting this browser's settings when the
-  // account has none, and bringing this browser in line. Unreachable, the local settings stand until the next fetch.
+  // account has none, and bringing this browser in line. The fetch reports this browser's time zone and preferred
+  // languages, which its profile on a computer copies. Unreachable, the local settings stand until the next fetch.
   private async pull(settings: CaptureSettings): Promise<CaptureSettings> {
     let body: ReturnType<typeof syncResponseSchema.parse>;
     try {
-      const response = await this.call('/api/v1/sync', { signal: AbortSignal.timeout(checkTimeoutMs) });
+      const query = localeQuery(
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+        await this.api.i18n.getAcceptLanguages().catch(() => []),
+      );
+      const response = await this.call(`/api/v1/sync${query ? `?${query}` : ''}`, {
+        signal: AbortSignal.timeout(checkTimeoutMs),
+      });
       if (response === 'reconnect') return settings;
       const parsed = syncResponseSchema.safeParse(await response.json().catch(() => undefined));
       if (!response.ok || !parsed.success) return settings;

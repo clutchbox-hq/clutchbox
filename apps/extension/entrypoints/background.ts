@@ -13,6 +13,7 @@ export default defineBackground(() => {
       tabs: chrome.tabs,
       action: chrome.action,
       runtime: chrome.runtime,
+      i18n: chrome.i18n,
       fetch: (input, init) => fetch(input, init),
     },
     serverOrigin,

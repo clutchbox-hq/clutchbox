@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { bigint, timestamp } from 'drizzle-orm/pg-core';
 
 // Shared column builders.
@@ -14,3 +15,9 @@ export const timestamps = () => ({
     .notNull()
     .$onUpdate(() => new Date()),
 });
+// A text[] literal of values, each its own parameter.
+export const textArray = (values: string[]) =>
+  sql`array[${sql.join(
+    values.map(value => sql`${value}`),
+    sql`, `,
+  )}]::text[]`;

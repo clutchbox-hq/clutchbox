@@ -203,6 +203,13 @@ export const REFRESH_BUDGET_MS = 30_000;
 // other profile, a few seconds, like refresh's restart, which gets REFRESH_BUDGET_MS. Also clamped to what is left of
 // SYNC_DEADLINE_MS, and the apply that follows gets the rest.
 export const PROFILE_SWITCH_BUDGET_MS = REFRESH_BUDGET_MS;
+// Setting the system time zone, which restarts a Chrome on another zone the way a profile switch does, so it gets the
+// same budget. Also clamped to what is left of SYNC_DEADLINE_MS.
+export const TIME_ZONE_BUDGET_MS = PROFILE_SWITCH_BUDGET_MS;
+// Setting a profile's languages: recording them and, when Chrome runs the profile, a background settings tab that takes
+// them in about a second, after a wait for a concurrent apply's lock. The adapter needs 5 s for the tab and keeps a
+// third of the budget for the lock. Also clamped to what is left of SYNC_DEADLINE_MS.
+export const LANGUAGES_BUDGET_MS = 15_000;
 
 // --- Apply-on-open (computers.ts, applyLatestCapture) ---
 

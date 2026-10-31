@@ -1,13 +1,15 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { extensionClientId, refreshReuseSeconds, syncScope } from '@clutchbox/capture';
-import { and, asc, eq, exists, gt, gte, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import { type BrowserLocale, extensionClientId, refreshReuseSeconds, syncScope } from '@clutchbox/capture';
+import { and, asc, eq, exists, gt, gte, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { deleteCaptures, deleteCapturesIn, lockMember } from './captures';
+import { textArray } from './columns';
 import type { Database } from './database';
 import { newPublicId, publicIdPattern } from './ids';
 import { logBrowserEvent } from './log';
 import { currentMember, type Member } from './organizations';
 import * as schema from './schema';
+import { isTimeZone } from './time-zones';
 
 // Browsers connected with OAuth. The extension is a first-party client of our Better Auth server whose
 // opaque `sync` tokens work only on the extension's routes. A connected browser is one refresh-token family: the
@@ -386,6 +388,8 @@ async function signOutFamily(db: Database, userId: string, family: string, now: 
           disconnectedAt: sql`coalesce(${browsers.disconnectedAt}, ${now})`,
           browser: null,
           platform: null,
+          timeZone: null,
+          languages: null,
           lastSyncedAt: null,
         },
       })
@@ -524,6 +528,24 @@ export async function refreshTokenClient(db: Database, token: string) {
     .from(schema.oauthRefreshToken)
     .where(eq(schema.oauthRefreshToken.token, hashToken(token)));
   return row?.clientId ?? null;
+}
+
+// The browser's time zone and languages, as its extension reports them with its settings fetch (GET /api/v1/sync), for
+// its profiles on computers to copy (computers.ts, applyTimeZone and applyLanguages). Each is written only when it
+// came, is valid, and changed, so a build that doesn't report them leaves the last ones.
+export async function recordBrowserLocale(db: Database, browserId: number, locale: BrowserLocale) {
+  const browsers = schema.connectedBrowsers;
+  const timeZone = locale.timeZone && isTimeZone(locale.timeZone) ? locale.timeZone : undefined;
+  const { languages } = locale;
+  const changed = [
+    ...(timeZone ? [sql`${browsers.timeZone} IS DISTINCT FROM ${timeZone}`] : []),
+    ...(languages ? [sql`${browsers.languages} IS DISTINCT FROM ${textArray(languages)}`] : []),
+  ];
+  if (!changed.length) return;
+  await db
+    .update(browsers)
+    .set({ ...(timeZone ? { timeZone } : {}), ...(languages ? { languages } : {}) })
+    .where(and(eq(browsers.id, browserId), or(...changed)));
 }
 
 // Names the browser from its User-Agent for the account page. Brave and Arc report Chrome.
