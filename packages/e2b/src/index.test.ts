@@ -282,6 +282,19 @@ describe('E2B adapter', () => {
     );
     expect(command).toMatch(/exec node \/opt\/agent-computers\/set-languages\.mjs de-DE,de (\d+) 9>&-$/);
     expect(Number(command.match(/set-languages\.mjs de-DE,de (\d+)/)![1])).toBeLessThan(15_000 - 5_000);
+    // A failure's code names the step, since the server logs only an error's class and code.
+    const exit = (exitCode: number, stdout = '') =>
+      new CommandExitError({ exitCode, error: `exit status ${exitCode}`, stdout, stderr: '' });
+    for (const [failure, code] of [
+      [exit(1, '{"error":"settings_tab_failed"}\n'), 'settings_tab_failed'],
+      [exit(1), 'languages_locked'],
+      [exit(4), 'languages_unwritten'],
+      [exit(137), 'languages_exit_137'],
+      [exit(1, '{"error":"Not a code"}'), 'languages_locked'],
+    ] as const) {
+      run.mockRejectedValueOnce(failure);
+      await expect(session.setLanguages('brw_0abc', ['de'], 15_000)).rejects.toMatchObject({ code });
+    }
   });
   it('switches the screen only to a size the desktop holds, adding its mode once (E2B adapter)', async () => {
     // set-screen.sh against a stand-in xrandr that logs its arguments and, queried with none, reports a desktop started

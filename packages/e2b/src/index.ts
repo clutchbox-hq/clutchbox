@@ -125,9 +125,12 @@ ${HELPER_DIR}/ensure-chrome.sh 9>&-
 `;
 // `set-languages.mjs <tags> <ms>`: makes the running Chrome's preferred languages <tags> (comma-separated), what sites
 // get as Accept-Language and navigator.languages, by setting intl.selected_languages from a background chrome://settings
-// tab, the way its Languages page does; Chrome then saves it in the profile. Exits within <ms>.
+// tab, the way its Languages page does; Chrome then saves it in the profile. Exits within <ms>. A failure prints
+// {"error": <code>} naming the step that failed, which setLanguages passes on as the error's code.
 export const SET_LANGUAGES = `const [tags, ms] = process.argv.slice(2);
 const fail = error => { console.log(JSON.stringify({ error })); process.exit(1); };
+process.on('uncaughtException', () => fail('languages_crashed'));
+process.on('unhandledRejection', () => fail('languages_crashed'));
 setTimeout(() => fail('languages_timeout'), Number(ms));
 const version = await fetch('http://127.0.0.1:9222/json/version').then(response => response.json()).catch(() => fail('cdp_unavailable'));
 const socket = new WebSocket(version.webSocketDebuggerUrl);
@@ -136,17 +139,36 @@ socket.onerror = () => fail('cdp_connection_failed');
 socket.onmessage = event => { const message = JSON.parse(event.data); pending.get(message.id)?.(message); pending.delete(message.id); };
 await new Promise(resolve => { socket.onopen = resolve; });
 const send = (method, params, sessionId) => new Promise(resolve => { const id = ++next; pending.set(id, resolve); socket.send(JSON.stringify({ id, method, params, sessionId })); });
-const { result: { targetId } } = await send('Target.createTarget', { url: 'chrome://settings/languages', background: true });
-const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+const targetId = (await send('Target.createTarget', { url: 'chrome://settings/languages', background: true })).result?.targetId;
+if (!targetId) fail('settings_tab_failed');
+const sessionId = (await send('Target.attachToTarget', { targetId, flatten: true })).result?.sessionId;
+if (!sessionId) fail('settings_attach_failed');
 const set = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: \`(async () => {
   while (!globalThis.chrome?.settingsPrivate?.setPref) await new Promise(resolve => setTimeout(resolve, 100));
   return new Promise(resolve => chrome.settingsPrivate.setPref('intl.selected_languages', \${JSON.stringify(tags)}, '', resolve));
 })()\` }, sessionId);
 await send('Target.closeTarget', { targetId });
-if (set.result?.result?.value !== true) fail('languages_refused');
+if (set.result?.exceptionDetails || !set.result) fail('settings_script_failed');
+if (set.result.result?.value !== true) fail('languages_refused');
 console.log(JSON.stringify({ ok: true }));
 process.exit(0);
 `;
+// setLanguages' exit when the profile's languages file can't be written; exit 1 without the helper's JSON is the lock.
+const LANGUAGES_UNWRITTEN = 4;
+// A failed setLanguages as an error whose code names the failed step, the only detail the server logs (errorLabel).
+function languagesError(exitCode: number, stdout: string) {
+  let code =
+    exitCode === LANGUAGES_UNWRITTEN
+      ? 'languages_unwritten'
+      : exitCode === 1
+        ? 'languages_locked'
+        : `languages_exit_${exitCode}`;
+  try {
+    const reported = JSON.parse(stdout.trim().split('\n').at(-1) ?? '').error;
+    if (typeof reported === 'string' && /^[a-z_]{1,40}$/.test(reported)) code = reported;
+  } catch {}
+  return Object.assign(new Error(`set-languages failed: ${code}`), { code });
+}
 // `set-screen.sh <width> <height>`: switches the screen to that size, adding it as a RandR mode on first use, and
 // exits 0 once it runs at that size, 3 when the desktop started smaller (Xvfb can't grow past its start size), or 2
 // for a bad argument. xfwm4 keeps maximized windows maximized across the switch, and x11vnc (-xrandr) tells viewers.
@@ -722,10 +744,15 @@ function session(sandbox: Sandbox): ComputerSession {
       const waitSeconds = Math.max(1, Math.floor(budgetMs / 3000));
       const inside = budgetMs - waitSeconds * 1000 - SYNC_MARGIN_MS;
       if (inside < LANGUAGES_HELPER_MIN_MS) throw new Error('languages budget exceeded');
-      await sandbox.commands.run(
-        `${LOCKED(String(waitSeconds))}; echo ${tags} > ${file}.new && mv -f ${file}.new ${file} || exit 1; test "${currentProfile}" = ${profile} && test -f ${helper} && curl -sf http://127.0.0.1:9222/json/version >/dev/null || exit 0; exec node ${helper} ${tags} ${inside} 9>&-`,
-        { user: 'user', timeoutMs: budgetMs },
-      );
+      try {
+        await sandbox.commands.run(
+          `${LOCKED(String(waitSeconds))}; echo ${tags} > ${file}.new && mv -f ${file}.new ${file} || exit ${LANGUAGES_UNWRITTEN}; test "${currentProfile}" = ${profile} && test -f ${helper} && curl -sf http://127.0.0.1:9222/json/version >/dev/null || exit 0; exec node ${helper} ${tags} ${inside} 9>&-`,
+          { user: 'user', timeoutMs: budgetMs },
+        );
+      } catch (error) {
+        if (error instanceof CommandExitError) throw languagesError(error.exitCode, error.stdout);
+        throw error;
+      }
     },
     // As the desktop user, an X client like the desktop's own. Exit 3 is a desktop started smaller (SET_SCREEN).
     async setScreen(screen) {
