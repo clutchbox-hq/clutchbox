@@ -9,8 +9,10 @@ import {
   type ExecResult,
   FIRST_PROFILE,
   keyNamePattern,
+  type PlatformOverride,
   PROFILE_PATTERN,
   ProviderAccountRefused,
+  platformOverrideSchema,
   SCREENS,
 } from '@clutchbox/computer';
 import { Sandbox } from '@e2b/desktop';
@@ -25,6 +27,7 @@ import {
   CLIPBOARD_OWN_MS,
   ENSURE_CHROME_MS,
   LANGUAGES_HELPER_MIN_MS,
+  PLATFORM_HELPER_MIN_MS,
   PROFILE_STOP_MS,
   PROVIDER_REQUEST_MS,
   REFRESH_STEP_MS,
@@ -69,6 +72,13 @@ export const PROFILE_FILE = `${SYNC_DIR}/chrome-profile`;
 const SYNC_LOCK = `${SYNC_DIR}/sync.lock`;
 // A profile's languages (setLanguages), comma-separated, one file per profile: LANGUAGES_FILE-<profile>.
 const LANGUAGES_FILE = `${SYNC_DIR}/languages`;
+// A profile's platform (setPlatform), as JSON, one file per profile: PLATFORM_FILE-<profile>. None presents Linux.
+const PLATFORM_FILE = `${SYNC_DIR}/platform`;
+// What ua-override.mjs last did with the running profile's platform file: {"sha": <its SHA-256>, "ok": true} or
+// {"sha", "error": <code>}.
+const PLATFORM_STATUS = `${SYNC_DIR}/platform-status`;
+// While ua-override.mjs runs: {"pid", "override"}, the override it gives every page, for cdp.mjs's own sessions.
+const PLATFORM_LIVE = `${SYNC_DIR}/platform-live`;
 const currentProfile = `$(cat ${PROFILE_FILE} 2>/dev/null || echo ${FIRST_PROFILE})`;
 
 // Sandboxed Chrome (no --no-sandbox), on the profile PROFILE_FILE names. With no GPU, --ignore-gpu-blocklist gives
@@ -76,15 +86,17 @@ const currentProfile = `$(cat ${PROFILE_FILE} 2>/dev/null || echo ${FIRST_PROFIL
 // ordinary pages on the faster software compositor (scrolling at 55-60 fps instead of 40-51 on 2 vCPUs). TZ is the
 // system zone (setTimeZone), read here because a running Chrome keeps the zone it started with: on these computers it
 // never followed a later change to /etc/localtime. LANGUAGE is the profile's languages (setLanguages), which on Linux
-// set Chrome's own locale, and so the pages' Intl locale, and seed a new profile's preferred languages.
+// set Chrome's own locale, and so the pages' Intl locale, and seed a new profile's preferred languages. Each run makes
+// sure the platform supervisor (PLATFORM_SUPERVISOR) runs beside Chrome.
+const SUPERVISE_PLATFORM = `if [ -x ${HELPER_DIR}/platform-supervisor.sh ]; then setsid -f ${HELPER_DIR}/platform-supervisor.sh >/dev/null 2>&1 9>&-; fi`;
 export const ENSURE_CHROME = `#!/bin/sh
-curl -sf http://127.0.0.1:9222/json/version >/dev/null && exit 0
+curl -sf http://127.0.0.1:9222/json/version >/dev/null && { ${SUPERVISE_PLATFORM}; exit 0; }
 P=${currentProfile}
 case "$P" in ${FIRST_PROFILE}) D=${CHROME_DIR} ;; ''|*[!a-z0-9_]*) exit 1 ;; *) D=${CHROME_DIR}-$P ;; esac
 Z=$(cat /etc/timezone 2>/dev/null); case "$Z" in *[!A-Za-z0-9_+/-]*) Z= ;; esac
 L=$(cat ${LANGUAGES_FILE}-$P 2>/dev/null); case "$L" in *[!A-Za-z0-9,-]*) L= ;; esac
 DISPLAY=:0 nohup env \${Z:+TZ=$Z} \${L:+LANGUAGE=$(echo "$L" | tr ',-' ':_')} google-chrome --user-data-dir="$D" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-sync --ignore-gpu-blocklist --disable-gpu-compositing --start-maximized about:blank >/tmp/agent-computers-chrome.log 2>&1 &
-for i in $(seq 1 60); do curl -sf http://127.0.0.1:9222/json/version >/dev/null && exit 0; sleep 0.5; done
+for i in $(seq 1 60); do curl -sf http://127.0.0.1:9222/json/version >/dev/null && { ${SUPERVISE_PLATFORM}; exit 0; }; sleep 0.5; done
 exit 1
 `;
 // Stops Chrome as a profile switch or a zone change needs: closed over CDP (Browser.close, Chrome's own quit, which
@@ -169,6 +181,106 @@ function languagesError(exitCode: number, stdout: string) {
   } catch {}
   return Object.assign(new Error(`set-languages failed: ${code}`), { code });
 }
+// Each presented platform's user agent token (Chrome's reduced user agent freezes it) and navigator.platform.
+const PLATFORM_TOKENS = {
+  macOS: { userAgent: 'Macintosh; Intel Mac OS X 10_15_7', navigator: 'MacIntel' },
+  Windows: { userAgent: 'Windows NT 10.0; Win64; x64', navigator: 'Win32' },
+} satisfies Record<PlatformOverride['platform'], { userAgent: string; navigator: string }>;
+// `ua-override.mjs <file>`: while it runs, every page, frame, and worker of the running Chrome presents the platform in
+// <file> (a PlatformOverride) with Chrome's own version: auto-attached before its first request (waitForDebuggerOnStart)
+// and given the user agent, navigator.platform, and client hints by setUserAgentOverride. The version comes from the
+// engine itself, read from a localhost page, which unlike about:blank is a secure context with navigator.userAgentData,
+// before anything is attached. Overrides last only while it is attached, and a tab opened while it doesn't run loads
+// as plain Linux, never stuck. It exits when Chrome quits or <file> changes, and writes PLATFORM_STATUS: ok, or a code
+// naming the failed step.
+// navigator.platform, unlike the rest, is one value per page that every DevTools session writes: when it detaches, and
+// when the page commits a navigation to a new renderer, in the order the sessions attached (Chrome 156). Another
+// client's session so resets it to Linux; the helper writes it back on each commit, on SIGUSR1 (cdp.mjs sends one as
+// it detaches), and every second for clients that don't.
+export const UA_OVERRIDE = `import { createHash } from 'node:crypto';
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+const file = process.argv[2];
+const read = () => { try { return readFileSync(file, 'utf8'); } catch { return ''; } };
+const content = read();
+const sha = createHash('sha256').update(content).digest('hex');
+const status = value => { writeFileSync('${PLATFORM_STATUS}.new', JSON.stringify({ sha, ...value })); renameSync('${PLATFORM_STATUS}.new', '${PLATFORM_STATUS}'); };
+const fail = error => { status({ error }); process.exit(1); };
+process.on('exit', () => { try { unlinkSync('${PLATFORM_LIVE}'); } catch {} });
+process.on('uncaughtException', () => fail('platform_crashed'));
+process.on('unhandledRejection', () => fail('platform_crashed'));
+const tokens = ${JSON.stringify(PLATFORM_TOKENS)};
+let platform; try { platform = JSON.parse(content); } catch { fail('platform_unreadable'); }
+const token = tokens[platform?.platform];
+if (!token) fail('platform_unreadable');
+const version = await fetch('http://127.0.0.1:9222/json/version').then(response => response.json()).catch(() => fail('cdp_unavailable'));
+const major = String(version.Browser).split('/')[1]?.split('.')[0];
+const socket = new WebSocket(version.webSocketDebuggerUrl);
+const pending = new Map(); let next = 0; let override;
+// The page and frame sessions, whose navigator.platform reassert writes back.
+const pages = new Set();
+const reassert = () => { for (const sessionId of pages) send('Emulation.setUserAgentOverride', override, sessionId); };
+const send = (method, params, sessionId) => new Promise(resolve => { const id = ++next; pending.set(id, resolve); socket.send(JSON.stringify({ id, method, params, sessionId })); });
+const autoAttach = sessionId => send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId);
+socket.onerror = () => fail('cdp_connection_failed');
+socket.onclose = () => process.exit(0);
+socket.onmessage = event => {
+  const message = JSON.parse(event.data);
+  if (message.id) { pending.get(message.id)?.(message); pending.delete(message.id); return; }
+  if (!override) return;
+  const { sessionId } = message;
+  if (message.method === 'Page.frameNavigated' && !message.params.frame.parentId) send('Emulation.setUserAgentOverride', override, sessionId);
+  if (message.method === 'Target.detachedFromTarget') pages.delete(message.params.sessionId);
+  if (message.method !== 'Target.attachedToTarget') return;
+  const { sessionId: attached, targetInfo: { type } } = message.params;
+  if (type === 'page' || type === 'iframe') {
+    pages.add(attached);
+    send('Emulation.setUserAgentOverride', override, attached);
+    send('Page.enable', {}, attached);
+  } else if (/worker/.test(type)) send('Network.setUserAgentOverride', override, attached);
+  autoAttach(attached);
+  send('Runtime.runIfWaitingForDebugger', {}, attached);
+};
+await new Promise(resolve => { socket.onopen = resolve; });
+const probe = (await send('Target.createTarget', { url: 'http://127.0.0.1:9222/json/version', background: true })).result?.targetId;
+if (!probe) fail('brands_unavailable');
+const probeSession = (await send('Target.attachToTarget', { targetId: probe, flatten: true })).result?.sessionId;
+let own;
+for (let tries = 0; tries < 50 && !own; tries++) {
+  own = (await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: 'globalThis.navigator?.userAgentData?.getHighEntropyValues(["fullVersionList"])' }, probeSession)).result?.result?.value;
+  if (!own) await new Promise(resolve => setTimeout(resolve, 100));
+}
+await send('Target.closeTarget', { targetId: probe });
+if (!own?.brands?.length || !own.fullVersionList?.length || !/^\\d+$/.test(major ?? '')) fail('brands_unavailable');
+override = {
+  userAgent: 'Mozilla/5.0 (' + token.userAgent + ') AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36',
+  platform: token.navigator,
+  userAgentMetadata: { brands: own.brands, fullVersionList: own.fullVersionList, platform: platform.platform, platformVersion: platform.platformVersion, architecture: platform.architecture, model: '', mobile: false, bitness: platform.bitness, wow64: platform.wow64 },
+};
+await autoAttach(undefined);
+process.on('SIGUSR1', reassert);
+setInterval(() => {
+  if (createHash('sha256').update(read()).digest('hex') !== sha) process.exit(0);
+  reassert();
+}, 1000);
+writeFileSync('${PLATFORM_LIVE}.new', JSON.stringify({ pid: process.pid, override }));
+renameSync('${PLATFORM_LIVE}.new', '${PLATFORM_LIVE}');
+status({ ok: true });
+`;
+// `platform-supervisor.sh`: keeps one ua-override.mjs running on the platform file of the profile Chrome runs, while
+// Chrome runs, restarting it within a second when it exits (a crash, or a changed file). ENSURE_CHROME starts it on
+// each run, and setPlatform too. A second one waits for the first to end and leaves when it doesn't:
+// across a Chrome restart, whichever finds Chrome up carries on.
+export const PLATFORM_SUPERVISOR = `#!/bin/sh
+umask 077 && mkdir -p ${SYNC_DIR} && exec 8>${SYNC_DIR}/platform.lock && flock -w 5 8 || exit 0
+while curl -sf http://127.0.0.1:9222/json/version >/dev/null; do
+  F=${PLATFORM_FILE}-${currentProfile}
+  if [ -s "$F" ]; then node ${HELPER_DIR}/ua-override.mjs "$F" >>/tmp/agent-computers-platform.log 2>&1; else rm -f ${PLATFORM_STATUS}; fi
+  sleep 1
+done
+`;
+// setPlatform's exit when the profile's platform file can't be written, and when the helper never reported on it.
+const PLATFORM_UNWRITTEN = 4;
+const PLATFORM_UNREPORTED = 5;
 // `set-screen.sh <width> <height>`: switches the screen to that size, adding it as a RandR mode on first use, and
 // exits 0 once it runs at that size, 3 when the desktop started smaller (Xvfb can't grow past its start size), or 2
 // for a bad argument. xfwm4 keeps maximized windows maximized across the switch, and x11vnc (-xrandr) tells viewers.
@@ -210,14 +322,30 @@ DISPLAY=:0 ${HELPER_DIR}/set-screen.sh ${SCREENS[DEFAULT_SCREEN].width} ${SCREEN
 ${HELPER_DIR}/ensure-chrome.sh
 wait
 `;
-// Request/response CDP only: one command per process, events are not buffered.
-export const CDP_HELPER = `const input = JSON.parse(Buffer.from(process.argv[2], 'base64').toString());
+// Request/response CDP only: one command per process, events are not buffered. A command to a tab presents the platform
+// ua-override.mjs gives its pages, when it runs, and nudges it to write navigator.platform back once the session ends
+// (UA_OVERRIDE): a session of its own would otherwise leave the page reporting Linux. The pid is checked to be the
+// helper's before it gets a signal.
+export const CDP_HELPER = `import { readFileSync } from 'node:fs';
+const input = JSON.parse(Buffer.from(process.argv[2], 'base64').toString());
 const done = value => { console.log(JSON.stringify(value)); process.exit(0); };
 setTimeout(() => done({ error: 'cdp_timeout' }), ${CDP_REPLY_MS});
+let live;
+try { live = JSON.parse(readFileSync('${PLATFORM_LIVE}', 'utf8')); if (!input.targetId || !readFileSync('/proc/' + Number(live.pid) + '/cmdline', 'utf8').includes('ua-override.mjs')) live = undefined; } catch { live = undefined; }
 const url = input.targetId ? 'ws://127.0.0.1:9222/devtools/page/' + input.targetId : (await fetch('http://127.0.0.1:9222/json/version').then(response => response.json()).catch(() => done({ error: 'cdp_unavailable' }))).webSocketDebuggerUrl;
 const socket = new WebSocket(url);
-socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: input.method, params: input.params ?? {} }));
-socket.onmessage = event => { const message = JSON.parse(event.data); if (message.id === 1) done(message.error ? { error: message.error } : { result: message.result }); };
+socket.onopen = () => {
+  if (live) socket.send(JSON.stringify({ id: 0, method: 'Emulation.setUserAgentOverride', params: live.override }));
+  socket.send(JSON.stringify({ id: 1, method: input.method, params: input.params ?? {} }));
+};
+socket.onmessage = event => {
+  const message = JSON.parse(event.data);
+  if (message.id !== 1) return;
+  const value = message.error ? { error: message.error } : { result: message.result };
+  if (!live) done(value);
+  socket.onclose = () => { try { process.kill(Number(live.pid), 'SIGUSR1'); } catch {} done(value); };
+  socket.close();
+};
 socket.onerror = () => done({ error: 'cdp_connection_failed' });
 `;
 
@@ -510,6 +638,8 @@ export const HELPERS = [
   { name: 'use-profile.sh', content: USE_PROFILE, mode: '755' },
   { name: 'match-zone.sh', content: MATCH_ZONE, mode: '755' },
   { name: 'set-languages.mjs', content: SET_LANGUAGES, mode: '644' },
+  { name: 'platform-supervisor.sh', content: PLATFORM_SUPERVISOR, mode: '755' },
+  { name: 'ua-override.mjs', content: UA_OVERRIDE, mode: '644' },
   { name: 'cdp.mjs', content: CDP_HELPER, mode: '644' },
   { name: 'start-desktop.sh', content: START_DESKTOP, mode: '755' },
   { name: 'set-screen.sh', content: SET_SCREEN, mode: '755' },
@@ -753,6 +883,54 @@ function session(sandbox: Sandbox): ComputerSession {
         if (error instanceof CommandExitError) throw languagesError(error.exitCode, error.stdout);
         throw error;
       }
+    },
+    // As the desktop user, under the lock profile switches take: records the profile's platform for the supervisor, and
+    // when Chrome runs that profile, waits for ua-override.mjs to report on it. The file carries a fresh nonce, so the
+    // helper restarts and reports even on unchanged content. A computer whose refresh has not yet brought the helper
+    // only records it.
+    async setPlatform(profile, platform, budgetMs) {
+      if (!PROFILE_PATTERN.test(profile)) throw new Error('Invalid profile');
+      if (platform && !platformOverrideSchema.safeParse(platform).success) throw new Error('Invalid platform');
+      const file = `${PLATFORM_FILE}-${profile}`;
+      const content = platform ? JSON.stringify({ ...platform, nonce: randomUUID() }) : '';
+      const sha = createHash('sha256').update(content).digest('hex');
+      const waitSeconds = Math.max(1, Math.floor(budgetMs / 3000));
+      const inside = budgetMs - waitSeconds * 1000 - SYNC_MARGIN_MS;
+      if (inside < PLATFORM_HELPER_MIN_MS) throw new Error('platform budget exceeded');
+      const write = platform
+        ? `echo ${Buffer.from(content).toString('base64')} | base64 -d > ${file}.new && mv -f ${file}.new ${file}`
+        : `rm -f ${file}`;
+      // Reported: the status names this content, or with none, is gone.
+      const reported = platform ? `grep -qs '"sha":"${sha}"' ${PLATFORM_STATUS}` : `! test -e ${PLATFORM_STATUS}`;
+      const polls = Math.floor(inside / 250);
+      let stdout: string;
+      try {
+        ({ stdout } = await sandbox.commands.run(
+          `${LOCKED(String(waitSeconds))}; ${write} || exit ${PLATFORM_UNWRITTEN}; test "${currentProfile}" = ${profile} && test -x ${HELPER_DIR}/platform-supervisor.sh && curl -sf http://127.0.0.1:9222/json/version >/dev/null || exit 0; ${SUPERVISE_PLATFORM}; for i in $(seq 1 ${polls}); do ${reported} && { cat ${PLATFORM_STATUS} 2>/dev/null; exit 0; }; sleep 0.25; done; exit ${PLATFORM_UNREPORTED}`,
+          { user: 'user', timeoutMs: budgetMs },
+        ));
+      } catch (error) {
+        if (!(error instanceof CommandExitError)) throw error;
+        const code =
+          error.exitCode === PLATFORM_UNWRITTEN
+            ? 'platform_unwritten'
+            : error.exitCode === PLATFORM_UNREPORTED
+              ? 'platform_unreported'
+              : error.exitCode === 1
+                ? 'platform_locked'
+                : `platform_exit_${error.exitCode}`;
+        throw Object.assign(new Error(`set-platform failed: ${code}`), { code });
+      }
+      if (!platform || !stdout.trim()) return;
+      let error: unknown;
+      try {
+        error = JSON.parse(stdout.trim()).error;
+      } catch {
+        error = 'platform_status_unreadable';
+      }
+      if (error === undefined) return;
+      const code = typeof error === 'string' && /^[a-z_]{1,40}$/.test(error) ? error : 'platform_failed';
+      throw Object.assign(new Error(`set-platform failed: ${code}`), { code });
     },
     // As the desktop user, an X client like the desktop's own. Exit 3 is a desktop started smaller (SET_SCREEN).
     async setScreen(screen) {

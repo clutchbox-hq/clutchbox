@@ -86,6 +86,18 @@ export const sizeName = (size: ComputerSize) =>
   `${COMPUTER_SIZES[size].cpuCount} vCPU · ${COMPUTER_SIZES[size].memoryMB / 1024} GB`;
 export const PROFILE_PATTERN = /^[a-z0-9_]{1,64}$/;
 export const FIRST_PROFILE = 'default';
+// The platform a computer's Chrome presents to sites in place of its own Linux (setPlatform): the synced browser's,
+// as its client hints report it. The version a computer presents is always its own Chrome's, so the claims match the
+// engine. Only desktop platforms whose user agent string has a fixed token are presented.
+export const platformOverrideSchema = z.object({
+  platform: z.enum(['macOS', 'Windows']),
+  // As Chrome reports it: macOS 26.6.2, Windows 19.0.0 (its UniversalApiContract version), or empty.
+  platformVersion: z.string().regex(/^(\d{1,5}(\.\d{1,5}){0,3})?$/),
+  architecture: z.enum(['', 'x86', 'arm']),
+  bitness: z.enum(['', '32', '64']),
+  wow64: z.boolean(),
+});
+export type PlatformOverride = z.infer<typeof platformOverrideSchema>;
 export type ExecResult = {
   exitCode: number | null;
   stdout: string;
@@ -120,6 +132,10 @@ export interface ComputerSession {
   // when Chrome runs it, and from its next start otherwise. Chrome's own locale, which pages' Intl follows, changes only
   // at that next start. Done, or failed, within budgetMs.
   setLanguages(profile: string, languages: string[], budgetMs: number): Promise<void>;
+  // Makes Chrome on `profile` present `platform` to sites (its user agent, client hints, and navigator.platform), or
+  // its own with null: at once when Chrome runs it, without a restart, and from every later start. Done, or failed,
+  // within budgetMs.
+  setPlatform(profile: string, platform: PlatformOverride | null, budgetMs: number): Promise<void>;
   // Switches the screen to `screen`; windows and the browser keep running, and Chrome stays maximized. False, changing
   // nothing, on a computer whose desktop started smaller than the screen.
   setScreen(screen: ScreenSize): Promise<boolean>;

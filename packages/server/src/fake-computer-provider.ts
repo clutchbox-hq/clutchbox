@@ -1,6 +1,13 @@
 import type { CdpCookieParam } from '@clutchbox/apply';
 import { siteOfHost } from '@clutchbox/capture';
-import { type ClipboardContent, type ComputerSize, DEFAULT_SCREEN, FIRST_PROFILE, SCREENS } from '@clutchbox/computer';
+import {
+  type ClipboardContent,
+  type ComputerSize,
+  DEFAULT_SCREEN,
+  FIRST_PROFILE,
+  type PlatformOverride,
+  SCREENS,
+} from '@clutchbox/computer';
 import type { ComputerAction, ComputerProvider } from './computers';
 
 const cookieHost = (cookie: CdpCookieParam) => cookie.domain ?? new URL(cookie.url!).hostname;
@@ -30,6 +37,8 @@ type FakeSandbox = {
   timeZone?: string;
   // Each profile's preferred languages, as setLanguages left them.
   languages?: Record<string, string[]>;
+  // Each profile's presented platform, as setPlatform left it; absent for Linux.
+  platforms?: Record<string, PlatformOverride>;
   // What live view's paste last set as the clipboard.
   clipboard?: ClipboardContent;
   // The helper revision it runs: the provider's when it was created, like a current template.
@@ -45,7 +54,17 @@ type Size = { width: number; height: number };
 // What a snapshot keeps of its computer: the browser's state and the system's.
 type FakeSnapshot = Pick<
   FakeSandbox,
-  'tabs' | 'profile' | 'cookies' | 'profiles' | 'revision' | 'timeZone' | 'languages' | 'public' | 'screen' | 'desktop'
+  | 'tabs'
+  | 'profile'
+  | 'cookies'
+  | 'profiles'
+  | 'revision'
+  | 'timeZone'
+  | 'languages'
+  | 'platforms'
+  | 'public'
+  | 'screen'
+  | 'desktop'
 >;
 // A PNG's signature and header chunk, all of a screenshot that pngSize reads.
 const fakePng = ({ width, height }: Size) => {
@@ -86,10 +105,12 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
     timeZones: [] as string[],
     // Each setLanguages, with the profile and the languages.
     languages: [] as { profile: string; languages: string[] }[],
+    // Each setPlatform, with the profile and the platform (null for Linux).
+    platforms: [] as { profile: string; platform: PlatformOverride | null }[],
     // Each setScreen, with the screen asked for.
     screens: [] as string[],
-    // Refreshes, profile switches, zone and language changes, and cookie syncs, in order.
-    steps: [] as ('refresh' | 'profile' | 'zone' | 'languages' | 'sync')[],
+    // Refreshes, profile switches, zone, language, and platform changes, and cookie syncs, in order.
+    steps: [] as ('refresh' | 'profile' | 'zone' | 'languages' | 'platform' | 'sync')[],
     // Each useProfile, with the sandbox and the profile asked for: the profile each session ran on.
     profiles: [] as { sandboxId: string; profile: string }[],
   };
@@ -179,6 +200,7 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
         revision: helpers,
         timeZone,
         languages,
+        platforms,
         public: open,
         screen,
         desktop,
@@ -195,6 +217,7 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
           desktop,
           ...(timeZone ? { timeZone } : {}),
           ...(languages ? { languages } : {}),
+          ...(platforms ? { platforms } : {}),
           ...(open ? { public: open } : {}),
         }),
       );
@@ -276,6 +299,12 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
           calls.steps.push('languages');
           calls.languages.push({ profile, languages });
           sandbox.languages = { ...sandbox.languages, [profile]: languages };
+        },
+        async setPlatform(profile, platform) {
+          calls.steps.push('platform');
+          calls.platforms.push({ profile, platform });
+          const { [profile]: _, ...others } = sandbox.platforms ?? {};
+          sandbox.platforms = platform ? { ...others, [profile]: platform } : others;
         },
         async stream() {
           calls.streams.push(sandboxId);

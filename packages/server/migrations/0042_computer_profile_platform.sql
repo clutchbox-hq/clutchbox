@@ -1,0 +1,1 @@
+ALTER TABLE "computer_profiles" ADD COLUMN "platform" jsonb;

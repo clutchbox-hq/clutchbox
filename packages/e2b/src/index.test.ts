@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,12 +12,14 @@ import {
   CDP_HELPER,
   e2bComputerProvider,
   HELPERS,
+  PLATFORM_SUPERVISOR,
   PROFILE_FILE,
   REVISION,
   REVISION_FILE,
   SET_SCREEN,
   STREAM_ORIGIN,
   SYNC_CORE,
+  UA_OVERRIDE,
 } from './index';
 
 // The E2B SDK, mocked: tests stand in a sandbox whose commands they answer.
@@ -295,6 +298,81 @@ describe('E2B adapter', () => {
       run.mockRejectedValueOnce(failure);
       await expect(session.setLanguages('brw_0abc', ['de'], 15_000)).rejects.toMatchObject({ code });
     }
+  });
+  it("records a profile's platform and waits for the helper to present it, with a code naming a failed step", async () => {
+    const run = vi.fn(async (_command: string, _options?: { user?: string; timeoutMs: number }) => ({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+    }));
+    vi.spyOn(Sandbox, 'connect').mockResolvedValue({ commands: { run } } as never);
+    const session = await e2bComputerProvider().connect('sandbox', 1000);
+    const mac = {
+      platform: 'macOS',
+      platformVersion: '26.6.2',
+      architecture: 'arm',
+      bitness: '64',
+      wow64: false,
+    } as const;
+    // The platform reaches a file the helper reads, so only what Chrome reports.
+    await expect(session.setPlatform('../x', mac, 15_000)).rejects.toThrow('Invalid profile');
+    for (const platform of [
+      { ...mac, platform: 'Linux' },
+      { ...mac, platformVersion: '$(id)' },
+    ])
+      await expect(session.setPlatform('default', platform as never, 15_000)).rejects.toThrow('Invalid platform');
+    await expect(session.setPlatform('default', mac, 5_000)).rejects.toThrow('platform budget exceeded');
+    expect(run).not.toHaveBeenCalled();
+    run.mockResolvedValueOnce({ exitCode: 0, stdout: '{"sha":"x","ok":true}', stderr: '' });
+    await session.setPlatform('brw_0abc', mac, 15_000);
+    const [command, options] = run.mock.calls[0]!;
+    expect(options).toMatchObject({ user: 'user', timeoutMs: 15_000 });
+    // Written whole under the lock profile switches take, with a nonce so the helper restarts and reports on it.
+    const written = Buffer.from(command.match(/echo ([A-Za-z0-9+/=]+) \| base64 -d/)![1]!, 'base64').toString();
+    expect(JSON.parse(written)).toEqual({ ...mac, nonce: expect.any(String) });
+    expect(command).toContain('flock -w 5 9 || exit 1; echo ');
+    expect(command).toContain('> /home/user/.agent-computers/platform-brw_0abc.new && mv -f');
+    // Waited on only while Chrome runs that profile, until the status names this file's content.
+    expect(command).toContain(
+      'test "$(cat /home/user/.agent-computers/chrome-profile 2>/dev/null || echo default)" = brw_0abc && test -x /opt/agent-computers/platform-supervisor.sh',
+    );
+    expect(command).toContain(`grep -qs '"sha":"${createHash('sha256').update(written).digest('hex')}"'`);
+    // Linux again: the file goes, and the wait is for the helper's status to go with it.
+    run.mockClear();
+    await session.setPlatform('brw_0abc', null, 15_000);
+    expect(run.mock.calls[0]![0]).toContain('rm -f /home/user/.agent-computers/platform-brw_0abc ||');
+    expect(run.mock.calls[0]![0]).toContain('! test -e /home/user/.agent-computers/platform-status');
+    const exit = (exitCode: number) =>
+      new CommandExitError({ exitCode, error: `exit status ${exitCode}`, stdout: '', stderr: '' });
+    for (const [failure, code] of [
+      [exit(1), 'platform_locked'],
+      [exit(4), 'platform_unwritten'],
+      [exit(5), 'platform_unreported'],
+      [exit(137), 'platform_exit_137'],
+      [{ exitCode: 0, stdout: '{"sha":"x","error":"brands_unavailable"}', stderr: '' }, 'brands_unavailable'],
+      [{ exitCode: 0, stdout: '{"sha":"x","error":"Not a code"}', stderr: '' }, 'platform_failed'],
+      [{ exitCode: 0, stdout: 'garbled', stderr: '' }, 'platform_status_unreadable'],
+    ] as const) {
+      if (failure instanceof CommandExitError) run.mockRejectedValueOnce(failure);
+      else run.mockResolvedValueOnce(failure);
+      await expect(session.setPlatform('brw_0abc', mac, 15_000)).rejects.toMatchObject({ code });
+    }
+    // The helper and its supervisor are valid, and every Chrome start brings the supervisor.
+    const dir = mkdtempSync(join(tmpdir(), 'ua-override-'));
+    writeFileSync(join(dir, 'ua-override.mjs'), UA_OVERRIDE);
+    writeFileSync(join(dir, 'platform-supervisor.sh'), PLATFORM_SUPERVISOR);
+    const checks = [
+      spawnSync(process.execPath, ['--check', join(dir, 'ua-override.mjs')], { encoding: 'utf8' }),
+      spawnSync('sh', ['-n', join(dir, 'platform-supervisor.sh')], { encoding: 'utf8' }),
+    ];
+    rmSync(dir, { recursive: true, force: true });
+    expect(checks.map(check => [check.status, check.stderr])).toEqual([
+      [0, ''],
+      [0, ''],
+    ]);
+    expect(
+      HELPERS.find(helper => helper.name === 'ensure-chrome.sh')!.content.match(/platform-supervisor\.sh >/g),
+    ).toHaveLength(2);
   });
   it('switches the screen only to a size the desktop holds, adding its mode once (E2B adapter)', async () => {
     // set-screen.sh against a stand-in xrandr that logs its arguments and, queried with none, reports a desktop started

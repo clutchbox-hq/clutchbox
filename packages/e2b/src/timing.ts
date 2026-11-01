@@ -57,6 +57,11 @@ export const TIME_ZONE_MS = 10_000;
 // second on a local Chrome 156; this leaves headroom for a busy computer.
 export const LANGUAGES_HELPER_MIN_MS = 5_000;
 
+// The least time worth waiting for ua-override.mjs to report: the supervisor's one-second pause before restarting it,
+// node's start, and the background tab it reads Chrome's brands from, about 2 s in all on a computer (November 2026);
+// this leaves headroom for a busy one.
+export const PLATFORM_HELPER_MIN_MS = 5_000;
+
 // Switching the screen (set-screen.sh): a few xrandr requests and the half-second wait before waking the dock, about
 // 0.6 s in all (5 ms at the size already), measured October 2026.
 export const SCREEN_MS = 10_000;

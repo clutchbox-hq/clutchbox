@@ -1,5 +1,5 @@
 import { MAX_LANGUAGES, MAX_USER_AGENT, type UserAgentData } from '@clutchbox/capture/environment';
-import { COMPUTER_SIZE_NAMES, DEFAULT_SCREEN, SCREEN_NAMES } from '@clutchbox/computer';
+import { COMPUTER_SIZE_NAMES, DEFAULT_SCREEN, type PlatformOverride, SCREEN_NAMES } from '@clutchbox/computer';
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -401,6 +401,8 @@ export const computerProfiles = pgTable(
     appliedCapture: text('applied_capture'),
     // The browser's languages last set on this Chrome profile (computers.ts, applyLanguages); null for none yet.
     languages: text('languages').array(),
+    // The platform last set on this Chrome profile (computers.ts, applyPlatform); null for its own Linux.
+    platform: jsonb('platform').$type<PlatformOverride>(),
     ...timestamps(),
   },
   table => [
@@ -523,8 +525,8 @@ export const connectedBrowsers = pgTable(
     // recordBrowserEnvironment); its profile on a computer copies them. Null until a build that reports them syncs.
     timeZone: text('time_zone'),
     languages: text('languages').array(),
-    // Its user agent string and client hints (capture's environment.ts), kept as reported, not applied on computers.
-    // Opaque: never filtered on.
+    // Its user agent string and client hints (capture's environment.ts), as reported. Computers present the platform the
+    // hints name (computers.ts, applyPlatform), never the string. Opaque: never filtered on.
     userAgent: text('user_agent'),
     userAgentData: jsonb('user_agent_data').$type<UserAgentData>(),
     lastSyncedAt: time('last_synced_at'),

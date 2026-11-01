@@ -295,6 +295,13 @@
       "when": 1793492235056,
       "tag": "0041_browser_user_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793554844025,
+      "tag": "0042_computer_profile_platform",
+      "breakpoints": true
     }
   ]
 }

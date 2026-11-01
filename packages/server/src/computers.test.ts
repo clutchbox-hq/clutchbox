@@ -28,6 +28,7 @@ import {
   MAX_CLIPBOARD_BYTES,
   MAX_CLIPBOARD_IMAGE_BYTES,
   openComputerSession,
+  platformOverrideOf,
   resetOrganizationComputers,
   SESSION_ID_PATTERN,
   setComputerScreen,
@@ -1403,6 +1404,63 @@ describe('apply on open', () => {
       .where(eq(schema.connectedBrowsers.id, browser.id));
     await reopen(a);
     expect(sandbox().timeZone).toBe('America/Los_Angeles');
+  });
+  it("presents the session's browser's platform after its languages, set again only when it changes", async () => {
+    const a = await user('a');
+    const browser = await syncingBrowser(db, a);
+    await saveFromBrowser(db, a, bundle([cookie()]));
+    const mac = { platform: 'macOS', platformVersion: '26.6.2', architecture: 'arm', bitness: '64', model: '' };
+    await recordBrowserEnvironment(db, browser.id, {
+      languages: ['de-DE'],
+      userAgentData: { ...mac, mobile: false, wow64: false, brands: [{ brand: 'Chromium', version: '156' }] },
+    });
+    await reopen(a);
+    const presented = {
+      platform: 'macOS',
+      platformVersion: '26.6.2',
+      architecture: 'arm',
+      bitness: '64',
+      wow64: false,
+    };
+    expect(sandbox().platforms).toEqual({ [FIRST_PROFILE]: presented });
+    expect(fake.calls.steps).toEqual(['refresh', 'profile', 'languages', 'platform', 'sync']);
+    const [profile] = await db
+      .select()
+      .from(schema.computerProfiles)
+      .where(isNotNull(schema.computerProfiles.computerId));
+    expect(profile!.platform).toEqual(presented);
+    await reopen(a);
+    expect(fake.calls.platforms).toHaveLength(1);
+    // A browser now on Linux makes the computer present its own again.
+    await recordBrowserEnvironment(db, browser.id, { userAgentData: { platform: 'Linux', mobile: false } });
+    await reopen(a);
+    expect(fake.calls.platforms.at(-1)).toEqual({ profile: FIRST_PROFILE, platform: null });
+    expect(sandbox().platforms).toEqual({});
+  });
+  it('presents only a desktop macOS or Windows platform, from its client hints, never its user agent string', () => {
+    expect(platformOverrideOf(undefined)).toBeNull();
+    expect(platformOverrideOf({ platform: 'Linux', mobile: false })).toBeNull();
+    expect(platformOverrideOf({ platform: 'Android', mobile: true })).toBeNull();
+    expect(platformOverrideOf({ platform: 'macOS', mobile: true })).toBeNull();
+    // Hints Chrome wouldn't report are left empty.
+    expect(
+      platformOverrideOf({
+        platform: 'Windows',
+        platformVersion: '15.0.0',
+        architecture: 'x86',
+        bitness: '64',
+        mobile: false,
+      }),
+    ).toEqual({ platform: 'Windows', platformVersion: '15.0.0', architecture: 'x86', bitness: '64', wow64: false });
+    expect(
+      platformOverrideOf({
+        platform: 'macOS',
+        platformVersion: 'ten',
+        architecture: 'mips',
+        bitness: '128',
+        mobile: false,
+      }),
+    ).toEqual({ platform: 'macOS', platformVersion: '', architecture: '', bitness: '', wow64: false });
   });
   it('brings a computer behind the provider revision current on open, before the apply, and retries a failure', async () => {
     const a = await user('a');

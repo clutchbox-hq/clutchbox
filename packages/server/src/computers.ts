@@ -2,6 +2,7 @@ import 'server-only';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { cookieChanges, expiredCdpCookie, toCdpCookie } from '@clutchbox/apply';
 import { siteOfCookie } from '@clutchbox/capture';
+import type { UserAgentData } from '@clutchbox/capture/environment';
 import {
   type ClipboardContent,
   type ComputerProvider,
@@ -9,7 +10,9 @@ import {
   type ComputerSize,
   DEFAULT_SCREEN,
   FIRST_PROFILE,
+  type PlatformOverride,
   ProviderAccountRefused,
+  platformOverrideSchema,
   pngSize,
   type ScreenSize,
 } from '@clutchbox/computer';
@@ -36,6 +39,7 @@ import {
   HOLD_LAPSE_MS,
   IDLE_PAUSE_MS,
   LANGUAGES_BUDGET_MS,
+  PLATFORM_BUDGET_MS,
   PROFILE_SWITCH_BUDGET_MS,
   REFRESH_BUDGET_MS,
   RELEASED_LEASE_MS,
@@ -1025,6 +1029,7 @@ async function createFork(
           syncedSites: row.syncedSites,
           appliedCapture: resealBaseline(row.appliedCapture, caller, current.mainPublicId, publicId),
           languages: row.languages,
+          platform: row.platform,
         })),
       );
     const started = await startSession(tx, caller, fork!, undefined, now, choice);
@@ -1547,6 +1552,7 @@ async function applyProfiles(
   const row = await profileRow(db, computer.id, profile, rows);
   await switchProfile(session, row.chromeProfile, deadline);
   await applyLanguages(db, row, session, profile.browserId, deadline);
+  await applyPlatform(db, row, session, profile.browserId, deadline);
   return applyLatestCapture(db, member, computer, row, profile.browserId, session, deadline);
 }
 // Live view's apply, on a computer no agent is working on: to the profile a session there would get (pickProfile).
@@ -1844,6 +1850,52 @@ async function applyLanguages(
     await db.update(schema.computerProfiles).set({ languages: wanted }).where(eq(schema.computerProfiles.id, row.id));
   } catch (error) {
     logError('languages', error);
+  }
+}
+
+// The platform a computer presents for a browser (setPlatform), from the client hints it reported: a desktop macOS or
+// Windows browser's, each hint that isn't one Chrome reports left empty. Null, so the computer presents its own Linux,
+// for any other platform, a mobile browser, or a browser that reported no hints. Never from the user agent string.
+export function platformOverrideOf(data: UserAgentData | null | undefined): PlatformOverride | null {
+  if (!data || data.mobile) return null;
+  const { shape } = platformOverrideSchema;
+  const platform = shape.platform.safeParse(data.platform).data;
+  if (!platform) return null;
+  return {
+    platform,
+    platformVersion: shape.platformVersion.safeParse(data.platformVersion).data ?? '',
+    architecture: shape.architecture.safeParse(data.architecture).data ?? '',
+    bitness: shape.bitness.safeParse(data.bitness).data ?? '',
+    wow64: data.wow64 === true,
+  };
+}
+// One string per platform, whatever order jsonb keeps its keys in.
+const platformKey = (platform: PlatformOverride | null) =>
+  platform &&
+  [platform.platform, platform.platformVersion, platform.architecture, platform.bitness, platform.wow64].join('|');
+
+// The profile's browser's platform (platformOverrideOf) on its Chrome profile, with Chrome running it, set only when it
+// changed. A failure never blocks the open; the next one retries.
+async function applyPlatform(
+  db: Database,
+  row: Pick<ProfileRow, 'id' | 'chromeProfile' | 'platform'>,
+  session: ComputerSession,
+  browserId: number,
+  deadline: number,
+) {
+  try {
+    const [browser] = await db
+      .select({ userAgentData: schema.connectedBrowsers.userAgentData })
+      .from(schema.connectedBrowsers)
+      .where(eq(schema.connectedBrowsers.id, browserId));
+    const wanted = platformOverrideOf(browser?.userAgentData);
+    if (platformKey(wanted) === platformKey(row.platform)) return;
+    const budget = Math.min(PLATFORM_BUDGET_MS, deadline - Date.now());
+    if (budget <= 0) return;
+    await withinBudget(session.setPlatform(row.chromeProfile, wanted, budget), budget + SYNC_SLACK_MS);
+    await db.update(schema.computerProfiles).set({ platform: wanted }).where(eq(schema.computerProfiles.id, row.id));
+  } catch (error) {
+    logError('platform', error);
   }
 }
 
