@@ -341,6 +341,11 @@ const capped = (value: unknown) => {
   return value ?? null;
 };
 
+async function navigate(session: Session, target: string, url: string) {
+  const navigated = (await send(session, 'Page.navigate', { url }, target)) as { errorText?: string };
+  if (navigated.errorText) throw new BrowserError('navigation_failed', navigated.errorText);
+}
+
 // One browser action, with what the agent gets back. Throws BrowserError for what the agent can act on.
 export async function browserAction(
   session: Session,
@@ -353,9 +358,12 @@ export async function browserAction(
         tabs: (await pages(session)).map(page => ({ target_id: page.targetId, url: page.url, title: page.title })),
       };
     case 'tab_open': {
-      const { targetId: opened } = (await send(session, 'Target.createTarget', { url: input.url })) as {
+      // Blank first, then navigated: a computer that presents another platform (setPlatform) attaches to a new tab only
+      // once it exists, and a tab created on the URL sends its first request as Linux. A raw cdp createTarget still does.
+      const { targetId: opened } = (await send(session, 'Target.createTarget', { url: 'about:blank' })) as {
         targetId: string;
       };
+      await navigate(session, opened, input.url!);
       await loaded(session, opened, deadline);
       return snapshot(session, opened);
     }
@@ -393,8 +401,7 @@ export async function browserAction(
     case 'snapshot':
       return snapshot(session, target);
     case 'navigate': {
-      const navigated = (await send(session, 'Page.navigate', { url: input.url }, target)) as { errorText?: string };
-      if (navigated.errorText) throw new BrowserError('navigation_failed', navigated.errorText);
+      await navigate(session, target, input.url!);
       await loaded(session, target, deadline);
       return snapshot(session, target);
     }

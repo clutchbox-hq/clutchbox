@@ -131,6 +131,16 @@ describe('browser actions', () => {
       code: 'tab_not_found',
     });
   });
+  it('opens a tab blank and then navigates it, so the computer can attach before its first request', async () => {
+    const { session, commands } = browser(undefined, method =>
+      method === 'Target.createTarget' ? { result: { targetId: OTHER } } : undefined,
+    );
+    await browserAction(session, { action: 'tab_open', url: 'https://mail.test/' }, far());
+    expect(commands.slice(0, 2)).toEqual([
+      { method: 'Target.createTarget', params: { url: 'about:blank' }, target: undefined },
+      { method: 'Page.navigate', params: { url: 'https://mail.test/' }, target: OTHER },
+    ]);
+  });
   it('names what an action is missing', () => {
     expect(missingInput({ action: 'type', ref: 'e1' })).toEqual(['text']);
     expect(missingInput({ action: 'snapshot' })).toBeUndefined();
