@@ -155,12 +155,19 @@ const targetId = (await send('Target.createTarget', { url: 'chrome://settings/la
 if (!targetId) fail('settings_tab_failed');
 const sessionId = (await send('Target.attachToTarget', { targetId, flatten: true })).result?.sessionId;
 if (!sessionId) fail('settings_attach_failed');
-const set = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: \`(async () => {
+const expression = \`(async () => {
   while (!globalThis.chrome?.settingsPrivate?.setPref) await new Promise(resolve => setTimeout(resolve, 100));
   return new Promise(resolve => chrome.settingsPrivate.setPref('intl.selected_languages', \${JSON.stringify(tags)}, '', resolve));
-})()\` }, sessionId);
+})()\`;
+// On a Chrome that just started, the script can begin in the tab's blank page, whose context the settings page then
+// destroys: an exception, so it runs again in the page that replaced it, until the deadline.
+let set = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression }, sessionId);
+while (set.result?.exceptionDetails) {
+  await new Promise(resolve => setTimeout(resolve, 200));
+  set = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression }, sessionId);
+}
 await send('Target.closeTarget', { targetId });
-if (set.result?.exceptionDetails || !set.result) fail('settings_script_failed');
+if (!set.result) fail('settings_script_failed');
 if (set.result.result?.value !== true) fail('languages_refused');
 console.log(JSON.stringify({ ok: true }));
 process.exit(0);
