@@ -33,12 +33,12 @@
   },
   "dependencies": {
     "@clutchbox/apply": "workspace:*",
+    "@clutchbox/capture": "workspace:*",
     "@clutchbox/computer": "workspace:*",
     "@e2b/desktop": "2.4.0",
     "e2b": "2.55.0"
   },
   "devDependencies": {
-    "@clutchbox/capture": "workspace:*",
     "@types/node": "24.19.2"
   }
 }

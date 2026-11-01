@@ -17,7 +17,7 @@
     },
     "apps/extension": {
       "name": "@clutchbox/extension",
-      "version": "26.1029.0",
+      "version": "26.1031.0",
       "dependencies": {
         "@base-ui/react": "1.9.0",
         "@clutchbox/capture": "workspace:*",
@@ -132,12 +132,12 @@
       "version": "0.1.0",
       "dependencies": {
         "@clutchbox/apply": "workspace:*",
+        "@clutchbox/capture": "workspace:*",
         "@clutchbox/computer": "workspace:*",
         "@e2b/desktop": "2.4.0",
         "e2b": "2.55.0",
       },
       "devDependencies": {
-        "@clutchbox/capture": "workspace:*",
         "@types/node": "24.19.2",
       },
     },
