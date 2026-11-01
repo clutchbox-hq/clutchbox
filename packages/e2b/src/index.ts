@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SANDBOX_CORE } from '@clutchbox/apply/sandbox';
-import { languageTagPattern, MAX_LANGUAGES, timeZonePattern } from '@clutchbox/capture/locale';
+import { languageTagPattern, MAX_LANGUAGES, timeZonePattern } from '@clutchbox/capture/environment';
 import {
   type ComputerProvider,
   type ComputerSession,

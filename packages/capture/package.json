@@ -22,7 +22,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./locale": "./src/locale.ts",
+    "./environment": "./src/environment.ts",
     "./sites": "./src/sites.ts"
   },
   "scripts": {

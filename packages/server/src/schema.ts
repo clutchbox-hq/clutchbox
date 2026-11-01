@@ -1,4 +1,4 @@
-import { MAX_LANGUAGES } from '@clutchbox/capture/locale';
+import { MAX_LANGUAGES, MAX_USER_AGENT, type UserAgentData } from '@clutchbox/capture/environment';
 import { COMPUTER_SIZE_NAMES, DEFAULT_SCREEN, SCREEN_NAMES } from '@clutchbox/computer';
 import { relations, sql } from 'drizzle-orm';
 import {
@@ -520,9 +520,13 @@ export const connectedBrowsers = pgTable(
     browser: text('browser', { enum: BROWSER_NAMES }),
     platform: text('platform', { enum: BROWSER_PLATFORMS }),
     // The browser's time zone and preferred languages, as its extension last reported them (browsers.ts,
-    // recordBrowserLocale); its profile on a computer copies them. Null until a build that reports them syncs.
+    // recordBrowserEnvironment); its profile on a computer copies them. Null until a build that reports them syncs.
     timeZone: text('time_zone'),
     languages: text('languages').array(),
+    // Its user agent string and client hints (capture's environment.ts), kept as reported, not applied on computers.
+    // Opaque: never filtered on.
+    userAgent: text('user_agent'),
+    userAgentData: jsonb('user_agent_data').$type<UserAgentData>(),
     lastSyncedAt: time('last_synced_at'),
     // Tombstone of signing out: the family never syncs again, even when a racing rotation recreates its tokens.
     disconnectedAt: time('disconnected_at'),
@@ -534,6 +538,7 @@ export const connectedBrowsers = pgTable(
     check('connected_browsers_browser', oneOf(table.browser, BROWSER_NAMES)),
     check('connected_browsers_platform', oneOf(table.platform, BROWSER_PLATFORMS)),
     check('connected_browsers_time_zone', timeZoneName(table.timeZone)),
+    check('connected_browsers_user_agent', sql`char_length(${table.userAgent}) <= ${sql.raw(String(MAX_USER_AGENT))}`),
     check(
       'connected_browsers_languages',
       sql`cardinality(${table.languages}) BETWEEN 1 AND ${sql.raw(String(MAX_LANGUAGES))}`,

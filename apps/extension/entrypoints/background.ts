@@ -1,3 +1,4 @@
+import { userAgentHints } from '@clutchbox/capture';
 import { defineBackground } from 'wxt/utils/define-background';
 import { distribution } from '../src/build';
 import { CaptureController, syncAlarm, trustedSender } from '../src/controller';
@@ -14,6 +15,12 @@ export default defineBackground(() => {
       action: chrome.action,
       runtime: chrome.runtime,
       i18n: chrome.i18n,
+      clientHints: async () =>
+        (
+          navigator as Navigator & {
+            userAgentData?: { getHighEntropyValues(hints: readonly string[]): Promise<unknown> };
+          }
+        ).userAgentData?.getHighEntropyValues(userAgentHints),
       fetch: (input, init) => fetch(input, init),
     },
     serverOrigin,

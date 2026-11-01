@@ -17,10 +17,10 @@ import {
   defaultSettings,
   type ExchangeResponse,
   type ExtensionConfig,
+  environmentQuery,
   extensionVersionHeader,
   flowTtlMs,
   issuerOf,
-  localeQuery,
   meSchema,
   newState,
   type Organization,
@@ -165,6 +165,8 @@ export interface CaptureBrowser {
   action: Pick<typeof chrome.action, 'setBadgeText'>;
   runtime: Pick<typeof chrome.runtime, 'requestUpdateCheck' | 'reload'>;
   i18n: Pick<typeof chrome.i18n, 'getAcceptLanguages'>;
+  // navigator.userAgentData.getHighEntropyValues(userAgentHints), or undefined where Chrome has no client hints.
+  clientHints(): Promise<unknown>;
   fetch: typeof fetch;
 }
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -757,14 +759,15 @@ class Connection {
     return 'done';
   }
   // The account's settings, fetched with the server's config, adopting this browser's settings when the
-  // account has none, and bringing this browser in line. The fetch reports this browser's time zone and preferred
-  // languages, which its profile on a computer copies. Unreachable, the local settings stand until the next fetch.
+  // account has none, and bringing this browser in line. The fetch reports this browser's time zone, preferred
+  // languages, and client hints (environment.ts). Unreachable, the local settings stand until the next fetch.
   private async pull(settings: CaptureSettings): Promise<CaptureSettings> {
     let body: ReturnType<typeof syncResponseSchema.parse>;
     try {
-      const query = localeQuery(
+      const query = environmentQuery(
         Intl.DateTimeFormat().resolvedOptions().timeZone,
         await this.api.i18n.getAcceptLanguages().catch(() => []),
+        await this.api.clientHints().catch(() => undefined),
       );
       const response = await this.call(`/api/v1/sync${query ? `?${query}` : ''}`, {
         signal: AbortSignal.timeout(checkTimeoutMs),

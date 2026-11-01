@@ -1788,7 +1788,7 @@ async function applyScreen(session: ComputerSession, screen: ScreenSize) {
   }
 }
 
-// The computer's system time zone: the session's profile's browser's (browsers.ts, recordBrowserLocale), else the one
+// The computer's system time zone: the session's profile's browser's (browsers.ts, recordBrowserEnvironment), else the one
 // the web app last reported (time-zones.ts), set only when it changed. Without either the computer keeps the template's
 // UTC. A failure never blocks the open; the next one retries.
 async function applyTimeZone(
@@ -1821,7 +1821,7 @@ async function applyTimeZone(
   }
 }
 
-// The profile's browser's languages (browsers.ts, recordBrowserLocale) on its Chrome profile, with Chrome running it,
+// The profile's browser's languages (browsers.ts, recordBrowserEnvironment) on its Chrome profile, with Chrome running it,
 // set only when they changed. A browser that never reported them leaves Chrome's own. A failure never blocks the open;
 // the next one retries.
 async function applyLanguages(

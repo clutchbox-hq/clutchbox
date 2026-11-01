@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures';
-import { recordBrowserLocale, removeBrowser } from './browsers';
+import { recordBrowserEnvironment, removeBrowser } from './browsers';
 import { bundle, cookie } from './capture-fixtures';
 import { deleteCaptures } from './captures';
 import {
@@ -1381,8 +1381,8 @@ describe('apply on open', () => {
     const browser = await syncingBrowser(db, a);
     await saveFromBrowser(db, a, bundle([cookie()]));
     // Invalid parts are left out, and a part that didn't come keeps the last one.
-    await recordBrowserLocale(db, browser.id, { timeZone: 'Not/AZone', languages: ['de-DE', 'de'] });
-    await recordBrowserLocale(db, browser.id, { timeZone: 'Europe/Berlin' });
+    await recordBrowserEnvironment(db, browser.id, { timeZone: 'Not/AZone', languages: ['de-DE', 'de'] });
+    await recordBrowserEnvironment(db, browser.id, { timeZone: 'Europe/Berlin' });
     await reopen(a);
     expect(sandbox().timeZone).toBe('Europe/Berlin');
     expect(sandbox().languages).toEqual({ [FIRST_PROFILE]: ['de-DE', 'de'] });

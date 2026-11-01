@@ -1,5 +1,5 @@
 import 'server-only';
-import { timeZonePattern } from '@clutchbox/capture/locale';
+import { timeZonePattern } from '@clutchbox/capture/environment';
 import { sql } from 'drizzle-orm';
 import type { Database } from './database';
 import { userSettings } from './schema';

@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { type BrowserLocale, extensionClientId, refreshReuseSeconds, syncScope } from '@clutchbox/capture';
+import { type BrowserEnvironment, extensionClientId, refreshReuseSeconds, syncScope } from '@clutchbox/capture';
 import { and, asc, eq, exists, gt, gte, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { deleteCaptures, deleteCapturesIn, lockMember } from './captures';
 import { textArray } from './columns';
@@ -390,6 +390,8 @@ async function signOutFamily(db: Database, userId: string, family: string, now: 
           platform: null,
           timeZone: null,
           languages: null,
+          userAgent: null,
+          userAgentData: null,
           lastSyncedAt: null,
         },
       })
@@ -530,21 +532,30 @@ export async function refreshTokenClient(db: Database, token: string) {
   return row?.clientId ?? null;
 }
 
-// The browser's time zone and languages, as its extension reports them with its settings fetch (GET /api/v1/sync), for
-// its profiles on computers to copy (computers.ts, applyTimeZone and applyLanguages). Each is written only when it
-// came, is valid, and changed, so a build that doesn't report them leaves the last ones.
-export async function recordBrowserLocale(db: Database, browserId: number, locale: BrowserLocale) {
+// What the browser tells sites about itself (capture's environment.ts), as its extension reports it with its settings
+// fetch (GET /api/v1/sync): the time zone and languages its profiles on computers copy (computers.ts, applyTimeZone and
+// applyLanguages), and its user agent and client hints, kept but not applied. Each part is written only when it came,
+// is valid, and changed, so a build that doesn't report one leaves the last.
+export async function recordBrowserEnvironment(db: Database, browserId: number, environment: BrowserEnvironment) {
   const browsers = schema.connectedBrowsers;
-  const timeZone = locale.timeZone && isTimeZone(locale.timeZone) ? locale.timeZone : undefined;
-  const { languages } = locale;
+  const timeZone = environment.timeZone && isTimeZone(environment.timeZone) ? environment.timeZone : undefined;
+  const { languages, userAgent, userAgentData } = environment;
+  const json = userAgentData && JSON.stringify(userAgentData);
   const changed = [
     ...(timeZone ? [sql`${browsers.timeZone} IS DISTINCT FROM ${timeZone}`] : []),
     ...(languages ? [sql`${browsers.languages} IS DISTINCT FROM ${textArray(languages)}`] : []),
+    ...(userAgent ? [sql`${browsers.userAgent} IS DISTINCT FROM ${userAgent}`] : []),
+    ...(json ? [sql`${browsers.userAgentData} IS DISTINCT FROM ${json}::jsonb`] : []),
   ];
   if (!changed.length) return;
   await db
     .update(browsers)
-    .set({ ...(timeZone ? { timeZone } : {}), ...(languages ? { languages } : {}) })
+    .set({
+      ...(timeZone ? { timeZone } : {}),
+      ...(languages ? { languages } : {}),
+      ...(userAgent ? { userAgent } : {}),
+      ...(userAgentData ? { userAgentData } : {}),
+    })
     .where(and(eq(browsers.id, browserId), or(...changed)));
 }
 

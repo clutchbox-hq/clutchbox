@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   authorizeUrl,
+  environmentQuery,
   issuerOf,
   newState,
   pkce,
@@ -217,21 +218,39 @@ describe('extension routes over OAuth', () => {
     expect(me.headers.get('access-control-allow-origin')).toBe(extension);
     expect(me.headers.get('set-cookie')).toBeNull();
     expect((await request('GET', '/sync', { token: tokens })).status).toBe(200);
-    // The settings fetch reports the browser's time zone and languages, kept until a later fetch changes them.
-    const locale = async () =>
+    // The settings fetch reports what the browser tells sites: its time zone, languages, and client hints, and its
+    // user agent as the request's own header. Each part stays until a later fetch changes it.
+    const environment = async () =>
       (
         await db
-          .select({ timeZone: schema.connectedBrowsers.timeZone, languages: schema.connectedBrowsers.languages })
+          .select({
+            timeZone: schema.connectedBrowsers.timeZone,
+            languages: schema.connectedBrowsers.languages,
+            userAgent: schema.connectedBrowsers.userAgent,
+            userAgentData: schema.connectedBrowsers.userAgentData,
+          })
           .from(schema.connectedBrowsers)
       )[0];
-    expect(await locale()).toEqual({ timeZone: null, languages: null });
-    expect((await request('GET', '/sync?time_zone=Europe/Berlin&languages=de-DE,de', { token: tokens })).status).toBe(
-      200,
-    );
-    expect(await locale()).toEqual({ timeZone: 'Europe/Berlin', languages: ['de-DE', 'de'] });
-    await request('GET', '/sync?time_zone=Nowhere/Here&languages=$(id)', { token: tokens });
-    await request('GET', '/sync', { token: tokens });
-    expect(await locale()).toEqual({ timeZone: 'Europe/Berlin', languages: ['de-DE', 'de'] });
+    // A build that reports nothing else still sends its user agent.
+    expect(await environment()).toEqual({
+      timeZone: null,
+      languages: null,
+      userAgent: CHROME_ON_MAC,
+      userAgentData: null,
+    });
+    const hints = { platform: 'macOS', platformVersion: '15.6.0', mobile: false };
+    const query = environmentQuery('Europe/Berlin', ['de-DE', 'de'], hints);
+    expect((await request('GET', `/sync?${query}`, { token: tokens })).status).toBe(200);
+    const reported = {
+      timeZone: 'Europe/Berlin',
+      languages: ['de-DE', 'de'],
+      userAgent: CHROME_ON_MAC,
+      userAgentData: hints,
+    };
+    expect(await environment()).toEqual(reported);
+    await request('GET', '/sync?time_zone=Nowhere/Here&languages=$(id)&ua_data={', { token: tokens });
+    await request('GET', '/sync', { token: tokens, headers: { 'user-agent': '' } });
+    expect(await environment()).toEqual(reported);
     expect(await json(await request('POST', '/sync/adopt', { token: tokens, body: { settings: local } }))).toEqual({
       status: 200,
       body: { settings: local },

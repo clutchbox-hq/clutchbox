@@ -288,6 +288,13 @@
       "when": 1793490942204,
       "tag": "0040_profile_languages",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793492235056,
+      "tag": "0041_browser_user_agent",
+      "breakpoints": true
     }
   ]
 }

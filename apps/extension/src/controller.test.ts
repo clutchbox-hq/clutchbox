@@ -311,6 +311,7 @@ function setup(installed: { [key: string]: unknown } = {}) {
       reload: vi.fn(),
     },
     i18n: { getAcceptLanguages: vi.fn(async () => ['de-DE', 'en']) },
+    clientHints: vi.fn(async () => ({ platform: 'macOS', platformVersion: '15.6.0', mobile: false })),
     fetch: route,
   };
   const restart = (distribution: Distribution = 'manual', version = '0.5.0') =>
@@ -491,7 +492,7 @@ describe('added sites', () => {
       '.sub.capture.test',
     ]);
   });
-  it("reports this browser's time zone and preferred languages with its settings fetch, never as headers", async () => {
+  it("reports this browser's time zone, preferred languages, and client hints with its settings fetch, never as headers", async () => {
     const test = await connected();
     const fetched = test.requests.filter(({ url, init }) => url.startsWith(`${origin}/api/v1/sync?`) && !init.method);
     expect(fetched.length).toBeGreaterThan(0);
@@ -499,6 +500,7 @@ describe('added sites', () => {
     expect(Object.fromEntries(query)).toEqual({
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       languages: 'de-DE,en',
+      ua_data: JSON.stringify({ platform: 'macOS', platformVersion: '15.6.0', mobile: false }),
     });
     // A new custom header would need a CORS preflight, which servers from before this refuse.
     expect(Object.keys(fetched.at(-1)!.init.headers as object).sort()).toEqual(['authorization', 'x-organization']);
