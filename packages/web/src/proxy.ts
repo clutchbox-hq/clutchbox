@@ -27,10 +27,10 @@ export const productMatcher = [
   '/api/auth/oauth2/authorize',
 ];
 
-// The app's proxy: the canonical origin first, then the moved pages, then /. With `landing`, a deployment's own landing
-// page at another path, / shows it to everyone, and signed-in visitors open the app from its links. Without one, /
-// routes by session cookie: to the app or to sign-in.
-export function createProductProxy({ landing }: { landing?: string } = {}) {
+// The app's proxy: the canonical origin first, then the moved pages, then /. With `landing`, the deployment serves its
+// own landing page at / to everyone, and signed-in visitors open the app from its links. Without one, / routes by
+// session cookie: to the app or to sign-in.
+export function createProductProxy({ landing = false }: { landing?: boolean } = {}) {
   return function proxy(request: NextRequest) {
     if (request.method !== 'GET' && request.method !== 'HEAD') return NextResponse.next();
     const target = canonicalAuthUrl(request.url, process.env.APP_ENV, process.env.BETTER_AUTH_URL);
@@ -38,8 +38,7 @@ export function createProductProxy({ landing }: { landing?: string } = {}) {
     const { pathname, search } = request.nextUrl;
     const page = moved[pathname];
     if (page) return NextResponse.redirect(new URL(`${page}${search}`, request.url), 308);
-    if (pathname !== '/') return NextResponse.next();
-    if (landing) return NextResponse.rewrite(new URL(landing, request.url));
+    if (pathname !== '/' || landing) return NextResponse.next();
     // Only the cookie's presence is checked here; the app validates the session and sends a stale one to /sign-in.
     return redirect(new URL(getSessionCookie(request) ? '/app' : '/sign-in', request.url));
   };

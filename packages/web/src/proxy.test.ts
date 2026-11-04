@@ -4,7 +4,7 @@ import { createProductProxy } from './proxy';
 
 // Routing that decides where every visitor lands: the canonical origin first, then the moved pages, then /.
 const canonical = 'https://www.example.test';
-const landing = createProductProxy({ landing: '/home' });
+const landing = createProductProxy({ landing: true });
 const signIn = createProductProxy();
 const request = (url: string, { cookie, method = 'GET' }: { cookie?: string | undefined; method?: string } = {}) =>
   new NextRequest(url, { method, headers: cookie ? { cookie } : {} });
@@ -36,7 +36,7 @@ describe('proxy', () => {
     for (const cookie of [...sessions, undefined, 'unrelated=1']) {
       const response = visit(`${canonical}/`, { cookie });
       expect(response.headers.get('location')).toBeNull();
-      expect(new URL(response.headers.get('x-middleware-rewrite')!).pathname).toBe('/home');
+      expect(response.headers.get('x-middleware-rewrite')).toBeNull();
     }
     for (const cookie of sessions) {
       const response = signIn(request(`${canonical}/`, { cookie }));
@@ -51,7 +51,6 @@ describe('proxy', () => {
       expect(response.headers.get('cache-control')).toBe('no-store');
     }
     // Only / routes; other pages and non-GET requests pass through.
-    expect(visit(`${canonical}/home`, { cookie: session }).headers.get('location')).toBeNull();
     expect(signIn(request(`${canonical}/`, { cookie: session, method: 'POST' })).headers.get('location')).toBeNull();
     expect(signIn(request(`${canonical}/app`, { cookie: session })).headers.get('location')).toBeNull();
   });
