@@ -1,7 +1,7 @@
 import { createProductProxy } from '@clutchbox/web/proxy';
 
-// Signed-out visitors to / go to sign-in.
-export const proxy = createProductProxy({ signedOut: { redirect: '/sign-in' } });
+// No landing page: / opens the app for signed-in visitors and sign-in for the rest.
+export const proxy = createProductProxy();
 
 // The product's matcher (productMatcher in @clutchbox/web/proxy), written out because Next.js reads it only as
 // a literal here.

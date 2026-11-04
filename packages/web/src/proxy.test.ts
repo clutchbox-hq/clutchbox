@@ -2,10 +2,10 @@ import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createProductProxy } from './proxy';
 
-// Routing that decides where every visitor lands: the canonical origin first, then / by session cookie.
+// Routing that decides where every visitor lands: the canonical origin first, then the moved pages, then /.
 const canonical = 'https://www.example.test';
-const landing = createProductProxy({ signedOut: { rewrite: '/home' } });
-const signIn = createProductProxy({ signedOut: { redirect: '/sign-in' } });
+const landing = createProductProxy({ landing: '/home' });
+const signIn = createProductProxy();
 const request = (url: string, { cookie, method = 'GET' }: { cookie?: string | undefined; method?: string } = {}) =>
   new NextRequest(url, { method, headers: cookie ? { cookie } : {} });
 const visit = (url: string, options?: { cookie?: string | undefined; method?: string }) =>
@@ -29,30 +29,31 @@ describe('proxy', () => {
     expect(visit('https://alias.example.test/sign-in').headers.get('location')).toBeNull();
   });
 
-  it('sends visitors with a session cookie from / to the app and shows everyone else the landing page or sign-in', () => {
+  it('shows everyone the landing page at /, or without one sends a session cookie to the app and the rest to sign-in', () => {
     vi.stubEnv('APP_ENV', 'production');
     vi.stubEnv('BETTER_AUTH_URL', canonical);
-    for (const cookie of [session, '__Secure-better-auth.session_token=synthetic']) {
+    const sessions = [session, '__Secure-better-auth.session_token=synthetic'];
+    for (const cookie of [...sessions, undefined, 'unrelated=1']) {
       const response = visit(`${canonical}/`, { cookie });
+      expect(response.headers.get('location')).toBeNull();
+      expect(new URL(response.headers.get('x-middleware-rewrite')!).pathname).toBe('/home');
+    }
+    for (const cookie of sessions) {
+      const response = signIn(request(`${canonical}/`, { cookie }));
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get('location')!).pathname).toBe('/app');
       expect(response.headers.get('cache-control')).toBe('no-store');
     }
     for (const cookie of [undefined, 'unrelated=1']) {
-      const response = visit(`${canonical}/`, { cookie });
-      expect(new URL(response.headers.get('x-middleware-rewrite')!).pathname).toBe('/home');
-      const toSignIn = signIn(request(`${canonical}/`, { cookie }));
-      expect(toSignIn.status).toBe(307);
-      expect(toSignIn.headers.get('location')).toBe(`${canonical}/sign-in`);
-      expect(toSignIn.headers.get('cache-control')).toBe('no-store');
+      const response = signIn(request(`${canonical}/`, { cookie }));
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe(`${canonical}/sign-in`);
+      expect(response.headers.get('cache-control')).toBe('no-store');
     }
-    expect(new URL(signIn(request(`${canonical}/`, { cookie: session })).headers.get('location')!).pathname).toBe(
-      '/app',
-    );
-    // Only / routes on the session; other pages and non-GET requests pass through.
+    // Only / routes; other pages and non-GET requests pass through.
     expect(visit(`${canonical}/home`, { cookie: session }).headers.get('location')).toBeNull();
-    expect(visit(`${canonical}/`, { cookie: session, method: 'POST' }).headers.get('location')).toBeNull();
-    expect(visit(`${canonical}/app`, { cookie: session }).headers.get('location')).toBeNull();
+    expect(signIn(request(`${canonical}/`, { cookie: session, method: 'POST' })).headers.get('location')).toBeNull();
+    expect(signIn(request(`${canonical}/app`, { cookie: session })).headers.get('location')).toBeNull();
   });
 
   it('moves the old account and live view addresses to their pages in the app for good, signed in or not', () => {
