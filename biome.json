@@ -1,6 +1,5 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "plugins": ["./biome/relative-import-extensions.grit"],
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -35,10 +34,17 @@
       "preset": "recommended",
       "style": {
         "noNonNullAssertion": "off"
+      },
+      "correctness": {
+        "useImportExtensions": "error"
       }
     }
   },
   "overrides": [
+    {
+      "includes": ["packages/ui/**"],
+      "linter": { "rules": { "correctness": { "useImportExtensions": "off" } } }
+    },
     {
       "includes": ["packages/web/src/**"],
       "linter": {
