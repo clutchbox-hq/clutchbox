@@ -1,0 +1,27 @@
+language js
+
+// A relative import without its file's extension. Node runs the TypeScript itself, and its ESM resolution needs the
+// extension; aliases and package subpaths resolve otherwise, so they're left alone.
+or {
+  `import $_ from $source`,
+  `import $source`,
+  `export { $_ } from $source`,
+  `export type { $_ } from $source`,
+  `export * from $source`,
+  `export * as $_ from $source`,
+  `import($source)`
+} where {
+  $source <: r"^.\.\.?/.*",
+  not $source <: or {
+    r"^.*\.ts.$",
+    r"^.*\.tsx.$",
+    r"^.*\.mts.$",
+    r"^.*\.mjs.$",
+    r"^.*\.js.$",
+    r"^.*\.json.$",
+    r"^.*\.css.$",
+    r"^.*\.svg.$",
+    r"^.*\.png.$"
+  },
+  register_diagnostic(span=$source, message="Name the file's extension (./x.ts): Node runs this TypeScript itself and needs it to resolve the import.")
+}

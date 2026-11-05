@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "plugins": ["./biome/relative-import-extensions.grit"],
   "vcs": {
     "enabled": true,
     "clientKind": "git",
