@@ -25,8 +25,8 @@ export function renderRoute(entry: RouteEntry): string {
   const imported = [...(factory ? [factory.name] : []), ...Object.values(aliases)].sort();
   if (imported.length) lines.push(`import { ${imported.join(', ')} } from ${from};`);
   const [wiring, wiringModule] = entry.file === 'route.ts' ? ['getServices', 'server'] : ['pageApi', 'pages'];
-  if (factory) lines.push(`import { ${wiring} } from '@/deployment/${wiringModule}';`);
-  if (factory?.shell) lines.push("import { deployment } from '@/deployment/ui';");
+  if (factory) lines.push(`import { ${wiring} } from '@/deployment/${wiringModule}.ts';`);
+  if (factory?.shell) lines.push("import { deployment } from '@/deployment/ui.ts';");
   const config = Object.entries(segment).map(
     ([name, value]) => `export const ${name} = ${typeof value === 'string' ? `'${value}'` : value};`,
   );

@@ -3,7 +3,7 @@ import localFont from 'next/font/local';
 import '@clutchbox/web/styles.css';
 import { AuthProvider } from '@clutchbox/web/components/auth-provider';
 import { siteOrigin } from '@clutchbox/web/lib/site';
-import { deployment } from '@/deployment/ui';
+import { deployment } from '@/deployment/ui.ts';
 
 // The type families live in @clutchbox/ui (packages/ui).
 const garamond = localFont({

@@ -1,8 +1,8 @@
 // Generated from the route manifest in @clutchbox/web (src/route-manifest.ts) by its
 // generate-routes script. Change the manifest and regenerate rather than editing this file.
 import { appLayout } from '@clutchbox/web/routes/app-layout';
-import { pageApi } from '@/deployment/pages';
-import { deployment } from '@/deployment/ui';
+import { pageApi } from '@/deployment/pages.ts';
+import { deployment } from '@/deployment/ui.ts';
 
 export const dynamic = 'force-dynamic';
 
