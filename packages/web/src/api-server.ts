@@ -1,7 +1,7 @@
 import { type ClientAddress, clientAddressFromEnv, listenUntilStopped, nodeServer } from '@clutchbox/api/node-upgrade';
 import { SHUTDOWN_GRACE_MS } from '@clutchbox/server/computer-timing';
 import { getRequestListener } from '@hono/node-server';
-import { securityHeaders } from '../next-config.mjs';
+import { securityHeaders } from '../next-config.ts';
 import { type RouteEntry, routeManifest } from './route-manifest.ts';
 import * as api from './routes/api.ts';
 import * as auth from './routes/auth.ts';
@@ -63,7 +63,7 @@ function handlers(entry: RouteEntry, getServices: GetServices) {
   return byMethod;
 }
 
-// The headers Next.js adds to every response (next-config.mjs), on a copy when the response's own are immutable, as a
+// The headers Next.js adds to every response (next-config.ts), on a copy when the response's own are immutable, as a
 // redirect's are.
 function withSecurityHeaders(response: Response) {
   const missing = securityHeaders.filter(({ key }) => !response.headers.has(key));

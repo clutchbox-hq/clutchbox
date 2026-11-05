@@ -1,4 +1,4 @@
-import { extensionDownloadEnv } from '@clutchbox/web/next-config.mjs';
+import { extensionDownloadEnv } from '@clutchbox/web/next-config';
 
 // The app's API on its own (@clutchbox/web/api-server), apart from its pages: what compose.yaml's api service runs, as
 // `node --conditions=react-server api.ts`, with the same configuration as server.ts. The extension

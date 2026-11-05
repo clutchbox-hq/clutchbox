@@ -30,7 +30,7 @@
     "./proxy": "./src/proxy.ts",
     "./node-server": "./src/node-server.ts",
     "./api-server": "./src/api-server.ts",
-    "./next-config.mjs": "./next-config.mjs",
+    "./next-config": "./next-config.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {

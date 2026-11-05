@@ -1,4 +1,4 @@
-import base, { extensionDownloadEnv } from '@clutchbox/web/next-config.mjs';
+import base, { extensionDownloadEnv } from '@clutchbox/web/next-config';
 import type { NextConfig } from 'next';
 
 // The manual build of the extension this app offers, built for this app's origin during `build` and served from
