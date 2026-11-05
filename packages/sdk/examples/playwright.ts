@@ -3,11 +3,11 @@
 //
 //   CLUTCHBOX_SERVER=http://localhost:3000 \
 //   CLUTCHBOX_API_KEY=ack_… \
-//   node --import tsx examples/playwright.ts [member ID] [URL to open]
+//   node examples/playwright.ts [member ID] [URL to open]
 //
 // Without a member ID it lists the organization's members and when each last synced.
 import { chromium } from 'playwright-core';
-import { createClient } from '../src/index';
+import { createClient } from '../src/index.ts';
 
 const server = process.env.CLUTCHBOX_SERVER ?? 'https://www.clutchbox.dev';
 const apiKey = process.env.CLUTCHBOX_API_KEY;

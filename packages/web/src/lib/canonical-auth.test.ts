@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalAuthUrl } from './canonical-auth';
+import { canonicalAuthUrl } from './canonical-auth.ts';
 
 describe('canonicalAuthUrl', () => {
   it('keeps browser auth on the canonical origin after a hostname migration, with signed queries intact', () => {

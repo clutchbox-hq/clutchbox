@@ -1,4 +1,4 @@
-import { mount } from '../../src/ui/mount';
-import { App } from './App';
+import { mount } from '../../src/ui/mount.tsx';
+import { App } from './App.tsx';
 
 mount(<App />);

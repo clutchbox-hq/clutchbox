@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { type Capture, type CapturedCookie, captureSchema, cookieSchema } from '@clutchbox/capture';
 import { z } from 'zod';
-import type { Member } from './organizations';
+import type { Member } from './organizations.ts';
 
 // Synced data at rest (captures.ts): sealed with AES-256-GCM under CAPTURE_ENCRYPTION_KEY, with its owner as associated
 // data, so a sealed value opens only for the row it was written for. Key rotation and object storage come later.

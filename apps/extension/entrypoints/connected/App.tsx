@@ -1,7 +1,7 @@
 import type { ExchangeResponse, Response } from '@clutchbox/capture';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { Button } from '../../src/ui/components/button';
+import { Button } from '../../src/ui/components/button.tsx';
 
 // Back to the tab the connect click came from, closing this one.
 async function returnTo(opener: number | undefined) {

@@ -7,15 +7,15 @@ import { eq, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth, getPrincipal, resumeAuthorization } from './auth';
-import { authorizeBrowser } from './browser-fixtures';
-import { ensureExtensionClient } from './browsers';
-import type { ServerConfig } from './config';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import type { Email } from './mail';
-import { createOrganization } from './organizations';
-import * as schema from './schema';
+import { createAuth, getPrincipal, resumeAuthorization } from './auth.ts';
+import { authorizeBrowser } from './browser-fixtures.ts';
+import { ensureExtensionClient } from './browsers.ts';
+import type { ServerConfig } from './config.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import type { Email } from './mail.ts';
+import { createOrganization } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Sign-in with each configured method, through Better Auth's real endpoints: OIDC against a stub issuer, GitHub against
 // a stub of its API, and email links through a fake mail sender. Google is Better Auth's own provider, like GitHub.

@@ -1,12 +1,12 @@
 import { type Response, type ServerResponse, serverOriginOfInput } from '@clutchbox/capture';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
-import { approvedServersKey } from '../controller';
-import { defaultServerOrigin } from '../origin';
-import { serverOrigin } from '../server';
-import { Button } from './components/button';
-import { Input } from './components/input';
-import { hint } from './sync-status';
+import { approvedServersKey } from '../controller.ts';
+import { defaultServerOrigin } from '../origin.ts';
+import { serverOrigin } from '../server.ts';
+import { Button } from './components/button.tsx';
+import { Input } from './components/input.tsx';
+import { hint } from './sync-status.tsx';
 
 const host = (origin: string) => new URL(origin).host;
 // The build's own server, which the warning compares the other one with.

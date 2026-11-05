@@ -16,8 +16,8 @@ import { Spinner } from '@clutchbox/ui/components/spinner';
 import { cn } from '@clutchbox/ui/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronsUpDown, LogOut, Settings } from 'lucide-react';
-import type { UserIdentity } from './user-avatar';
-import { UserView } from './user-view';
+import type { UserIdentity } from './user-avatar.tsx';
+import { UserView } from './user-view.tsx';
 
 // Signs out, clears account-specific caches, and goes to sign-in, which returns to `next` (a path it accepts).
 export function useAppSignOut(next?: string) {

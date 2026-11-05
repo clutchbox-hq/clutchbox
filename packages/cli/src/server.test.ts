@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiOriginOf, serverOrigin } from './server';
+import { apiOriginOf, serverOrigin } from './server.ts';
 
 describe('serverOrigin', () => {
   it('keeps only the origin', () => {

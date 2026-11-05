@@ -1,8 +1,8 @@
 import 'server-only';
 import { z } from 'zod';
-import { COMPUTER_ID_PATTERN, type Computers, liveViewHeartbeat } from './computers';
-import type { Database } from './database';
-import type { Member } from './organizations';
+import { COMPUTER_ID_PATTERN, type Computers, liveViewHeartbeat } from './computers.ts';
+import type { Database } from './database.ts';
+import type { Member } from './organizations.ts';
 
 // The general-purpose heartbeat: a page reports each lease it holds, by kind, to
 // POST /api/v1/heartbeat, and each kind's handler keeps its own state where its logic lives, writing only when a

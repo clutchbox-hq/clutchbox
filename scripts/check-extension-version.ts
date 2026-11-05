@@ -2,7 +2,7 @@
 // Users install builds by hand, so two different builds sharing a version would hide an update from them.
 // Usage: check-extension-version <base commit>. Docs are not counted.
 import { execFileSync } from 'node:child_process';
-import { compareVersions } from '../packages/capture/src/index';
+import { compareVersions } from '../packages/capture/src/index.ts';
 
 const base = process.argv[2];
 const git = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8' });

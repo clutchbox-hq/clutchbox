@@ -1,6 +1,6 @@
 import type { ConnectionSummary } from '@clutchbox/capture';
-import { serverOrigin } from '../server';
-import { hint } from './sync-status';
+import { serverOrigin } from '../server.ts';
+import { hint } from './sync-status.tsx';
 
 // A connection's name: its organization's, or its server's host when the server names none.
 export const connectionName = (connection: Pick<ConnectionSummary, 'origin' | 'organization'>) =>

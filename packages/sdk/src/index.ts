@@ -18,13 +18,14 @@ export type ClientOptions = {
 // the scope), not_found, no_capture, session_not_found, session_ended, busy, user_in_control, credit_exhausted,
 // provider_account_refused, computer_unavailable, and others. `message` says what to do, when the server says.
 export class ClutchboxError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message?: string,
-    readonly busyUntil?: string,
-  ) {
+  readonly status: number;
+  readonly code: string;
+  readonly busyUntil: string | undefined;
+  constructor(status: number, code: string, message?: string, busyUntil?: string) {
     super(message ? `Clutchbox answered ${status} ${code}: ${message}` : `Clutchbox answered ${status} ${code}`);
+    this.status = status;
+    this.code = code;
+    this.busyUntil = busyUntil;
   }
 }
 
@@ -190,10 +191,9 @@ export class ComputerSession {
   readonly screenUnchanged: boolean;
   private closed = false;
 
-  constructor(
-    private readonly computers: Computers,
-    answer: SessionAnswer,
-  ) {
+  private readonly computers: Computers;
+  constructor(computers: Computers, answer: SessionAnswer) {
+    this.computers = computers;
     this.id = answer.session;
     this.computer = answer.computer;
     this.cdpUrl = answer.cdpUrl;

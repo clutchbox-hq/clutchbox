@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { siteGroups, siteName } from './sites';
+import { siteGroups, siteName } from './sites.ts';
 
 describe('siteGroups', () => {
   it('groups suggested sites under one name and keeps other domains as their own group', () => {

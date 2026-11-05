@@ -6,10 +6,10 @@ import {
   LIVE_VIEW_CLOSE_WAIT_MS,
   LIVE_VIEW_CONTROL_RECHECK_MS,
   LIVE_VIEW_PING_MS,
-} from './computer-timing';
-import { errorLabel } from './log';
-import { RFB_FILTER_CLOSE_CODE, RfbClientFilter } from './rfb-filter';
-import { shutdownSignal } from './shutdown';
+} from './computer-timing.ts';
+import { errorLabel } from './log.ts';
+import { RFB_FILTER_CLOSE_CODE, RfbClientFilter } from './rfb-filter.ts';
+import { shutdownSignal } from './shutdown.ts';
 
 // The live-view relay's pipe: it joins the browser's noVNC WebSocket to the computer's websockify
 // WebSocket. What the computer sends goes to the browser byte for byte; what the browser sends goes through the

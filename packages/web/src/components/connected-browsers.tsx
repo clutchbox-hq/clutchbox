@@ -3,7 +3,7 @@ import { Alert, AlertDescription } from '@clutchbox/ui/components/alert';
 import { Button } from '@clutchbox/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, api, type Browser, browsersQuery, computerQuery, setupQuery, syncQuery } from '../lib/api';
+import { ApiError, api, type Browser, browsersQuery, computerQuery, setupQuery, syncQuery } from '../lib/api.ts';
 
 const browserNames = { chrome: 'Chrome', edge: 'Edge', opera: 'Opera' } as const;
 const platformNames = { macos: 'macOS', windows: 'Windows', linux: 'Linux', chromeos: 'ChromeOS' } as const;

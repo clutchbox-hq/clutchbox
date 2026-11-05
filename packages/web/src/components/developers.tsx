@@ -18,13 +18,13 @@ import { Input } from '@clutchbox/ui/components/input';
 import { Label } from '@clutchbox/ui/components/label';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
-import { organizationQuery } from '../lib/api';
-import { authClient } from '../lib/auth-client';
-import { AppPage } from './app-shell';
-import { ConnectApps } from './connect-apps';
-import { CopyButton } from './copy-button';
-import { Failure } from './failure';
-import { day, manages } from './organization';
+import { organizationQuery } from '../lib/api.ts';
+import { authClient } from '../lib/auth-client.ts';
+import { AppPage } from './app-shell.tsx';
+import { ConnectApps } from './connect-apps.tsx';
+import { CopyButton } from './copy-button.tsx';
+import { Failure } from './failure.tsx';
+import { day, manages } from './organization.tsx';
 
 // The Developers page: what lets a developer's servers and apps use the organization's members' synced sign-ins, with
 // their consent. Owners and admins manage it.

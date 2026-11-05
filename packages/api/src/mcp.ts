@@ -45,7 +45,7 @@ import {
 } from '@clutchbox/server/tool-calls';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { BrowserError, browserAction, browserInput, missingInput } from './browser';
+import { BrowserError, browserAction, browserInput, missingInput } from './browser.ts';
 
 // The remote MCP endpoint (/api/mcp): OAuth-protected transport and the computer tools,
 // presented over the grant and computer modules in packages/server.

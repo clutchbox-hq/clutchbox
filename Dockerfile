@@ -16,7 +16,7 @@ ENV NODE_ENV=production MIGRATE_ON_START=true
 WORKDIR /app/apps/web
 EXPOSE 3000
 # What `bun run start:api` runs, as the container's first process, so it gets the stop signal.
-CMD ["node", "--conditions=react-server", "--import", "tsx", "api.ts"]
+CMD ["node", "--conditions=react-server", "api.ts"]
 
 FROM base AS web
 ARG BETTER_AUTH_URL=http://localhost:3000
@@ -27,4 +27,4 @@ ENV NODE_ENV=production MIGRATE_ON_START=true
 WORKDIR /app/apps/web
 EXPOSE 3000
 # What `bun run start:web` runs, as the container's first process, so it gets the stop signal.
-CMD ["node", "--import", "tsx", "server.ts"]
+CMD ["node", "server.ts"]

@@ -1,8 +1,8 @@
 import 'server-only';
 import type { ComputerProvider } from '@clutchbox/computer';
 import { e2bComputerProvider, TEMPLATE } from '@clutchbox/e2b';
-import type { ServerConfig } from './config';
-import { fakeComputerProvider } from './fake-computer-provider';
+import type { ServerConfig } from './config.ts';
+import { fakeComputerProvider } from './fake-computer-provider.ts';
 
 // The deployment's computers when no provider account hook supplies them: E2B on E2B_API_KEY's team (the E2B SDK
 // reads the key from the same environment), from E2B_COMPUTER_TEMPLATE or the default template. Without a key,

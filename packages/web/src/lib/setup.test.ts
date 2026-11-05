@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSupportedBrowser } from './setup';
+import { isSupportedBrowser } from './setup.ts';
 
 const mac =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';

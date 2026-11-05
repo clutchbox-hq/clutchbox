@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { brandFolder, extensionIcon, render, webAppIcons } from './brand-images';
+import { brandFolder, extensionIcon, render, webAppIcons } from './brand-images.ts';
 
 // Renders this repository's brand images: brand/, the web app's icons (apps/web/app, by Next's file convention),
 // and the extension's (apps/extension/public/icon).

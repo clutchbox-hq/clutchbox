@@ -243,10 +243,12 @@ interface Host {
 // every request to it.
 class Server {
   private refreshing: Promise<Access> | undefined;
-  constructor(
-    private readonly host: Host,
-    readonly origin: string,
-  ) {}
+  private readonly host: Host;
+  readonly origin: string;
+  constructor(host: Host, origin: string) {
+    this.host = host;
+    this.origin = origin;
+  }
   private get api() {
     return this.host.api;
   }
@@ -376,13 +378,16 @@ class Connection {
   private quickStart: number | undefined;
   private quickAt = 0;
   readonly alarm: string;
-  constructor(
-    private readonly host: Host,
-    readonly id: string,
-    readonly origin: string,
-    // The organization's ID, which every request names; none on a server from before accounts.
-    readonly organization: string | undefined,
-  ) {
+  private readonly host: Host;
+  readonly id: string;
+  readonly origin: string;
+  // The organization's ID, which every request names; none on a server from before accounts.
+  readonly organization: string | undefined;
+  constructor(host: Host, id: string, origin: string, organization: string | undefined) {
+    this.host = host;
+    this.id = id;
+    this.origin = origin;
+    this.organization = organization;
     this.alarm = alarmOf(id);
   }
   private get api() {
@@ -1155,16 +1160,26 @@ export class CaptureController {
   private readonly servers = new Map<string, Server>();
   private selectedId: string | undefined;
   private readonly host: Host;
+  private readonly api: CaptureBrowser;
+  // The build's server: where existing installs and new connections connect unless the person names another, and
+  // where the verified list comes from.
+  private readonly serverOrigin: string;
+  private readonly version: string;
+  private readonly distribution: Distribution;
+  // chrome-extension://<id>/connected.html, the OAuth redirect URI.
+  private readonly redirectUri: string;
   constructor(
-    private readonly api: CaptureBrowser,
-    // The build's server: where existing installs and new connections connect unless the person names another, and
-    // where the verified list comes from.
-    private readonly serverOrigin: string,
-    private readonly version: string,
-    private readonly distribution: Distribution,
-    // chrome-extension://<id>/connected.html, the OAuth redirect URI.
-    private readonly redirectUri: string,
+    api: CaptureBrowser,
+    serverOrigin: string,
+    version: string,
+    distribution: Distribution,
+    redirectUri: string,
   ) {
+    this.api = api;
+    this.serverOrigin = serverOrigin;
+    this.version = version;
+    this.distribution = distribution;
+    this.redirectUri = redirectUri;
     this.host = {
       api,
       version,

@@ -1,6 +1,6 @@
 'use client';
 import { Alert, AlertDescription } from '@clutchbox/ui/components/alert';
-import { ApiError } from '../lib/api';
+import { ApiError } from '../lib/api.ts';
 
 // The server's refusals, in words; any other error shows its own message.
 const refusals: Record<string, string> = {

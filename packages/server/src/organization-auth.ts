@@ -5,12 +5,12 @@ import { organization } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
 import { adminAc, defaultStatements, memberAc, ownerAc } from 'better-auth/plugins/organization/access';
 import { and, count, eq, gt, ne, sql } from 'drizzle-orm';
-import type { Database } from './database';
-import type { Limits } from './hooks';
-import { newPublicId } from './ids';
-import type { SendEmail } from './mail';
-import { actIn, type Tenancy } from './organizations';
-import * as schema from './schema';
+import type { Database } from './database.ts';
+import type { Limits } from './hooks.ts';
+import { newPublicId } from './ids.ts';
+import type { SendEmail } from './mail.ts';
+import { actIn, type Tenancy } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Organizations, members, invitations, and organization API keys are Better Auth's organization and api-key plugins,
 // over our own tables (auth-schema.ts). What stays ours, and why, is in members.ts and organizations.ts.

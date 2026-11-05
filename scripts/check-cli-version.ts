@@ -3,7 +3,7 @@
 // reach main and never reach `npx clutchbox@latest`.
 // Usage: check-cli-version <base commit>. Tests and docs are not counted.
 import { execFileSync } from 'node:child_process';
-import { compareVersions } from '../packages/capture/src/index';
+import { compareVersions } from '../packages/capture/src/index.ts';
 
 // What `bun build` bundles into dist/clutchbox.js: the CLI's source, and the agents' commands it shares with the
 // Agents page. publish-cli.yml's `paths` lists the same.

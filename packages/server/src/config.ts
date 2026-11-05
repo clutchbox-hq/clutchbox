@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { builtInAgentClientUrls } from './agents';
+import { builtInAgentClientUrls } from './agents.ts';
 
 const optional = z.string().optional();
 const envSchema = z.object({

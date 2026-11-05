@@ -1,6 +1,6 @@
 import { createMcpEndpoint } from '@clutchbox/api/mcp';
 import { apiOrigin } from '@clutchbox/server/config';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/mcp. The route manifest gives its route file ROUTE_MAX_DURATION_MS (@clutchbox/server/computer-timing).
 export const mcpRoute = (getServices: GetServices) =>

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { AppShell } from '../components/app-shell';
-import { type ShellExtras, ShellProvider } from '../deployment';
-import { apiGet, type Me, type PageApi } from '../lib/page-api';
+import { AppShell } from '../components/app-shell.tsx';
+import { type ShellExtras, ShellProvider } from '../deployment.tsx';
+import { apiGet, type Me, type PageApi } from '../lib/page-api.ts';
 
 export const metadata: Metadata = { robots: { index: false } };
 // The signed-in app, under /app, in the deployment's shell. Its API routes check the session and membership

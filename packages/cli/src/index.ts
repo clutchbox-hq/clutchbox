@@ -5,8 +5,8 @@ import { delimiter, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { agentAddCommands, mcpServerName } from '@clutchbox/server/agents';
-import { chromeWebStoreUrl, extensionStatus } from './extension';
-import { apiOriginOf, serverOrigin } from './server';
+import { chromeWebStoreUrl, extensionStatus } from './extension.ts';
+import { apiOriginOf, serverOrigin } from './server.ts';
 
 // `npx clutchbox`: adds a Clutchbox server to the agents on this machine that have a CLI, then opens the web app's
 // setup, which signs the user in and covers browser sync, the steps a terminal can't do, and the Chrome Web Store

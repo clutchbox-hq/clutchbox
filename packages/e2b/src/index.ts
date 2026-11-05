@@ -43,7 +43,7 @@ import {
   TIME_ZONE_MS,
   TYPE_KEY_DELAY_MS,
   XDOTOOL_MS,
-} from './timing';
+} from './timing.ts';
 
 // Computers on E2B: a desktop sandbox from a template with Chrome running, controlled with xdotool, CDP, and
 // commands. Helpers are baked into the template (TEMPLATE, built with HELPERS and START_DESKTOP) and kept current on

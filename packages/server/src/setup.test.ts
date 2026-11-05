@@ -5,14 +5,21 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { saveFromBrowser } from './browser-fixtures';
-import { bundle, cookie, siteBundle } from './capture-fixtures';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { membership, person } from './member-fixtures';
-import type { Member } from './organizations';
-import * as schema from './schema';
-import { closeSetupNotice, noteAgentConnected, noteSetupStep, recordSetupStep, resetSetup, setupView } from './setup';
+import { saveFromBrowser } from './browser-fixtures.ts';
+import { bundle, cookie, siteBundle } from './capture-fixtures.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { membership, person } from './member-fixtures.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
+import {
+  closeSetupNotice,
+  noteAgentConnected,
+  noteSetupStep,
+  recordSetupStep,
+  resetSetup,
+  setupView,
+} from './setup.ts';
 
 let pg: PGlite;
 let db: Database;

@@ -1,2 +1,2 @@
-export * from './chrome';
-export * from './cookies';
+export * from './chrome.ts';
+export * from './cookies.ts';

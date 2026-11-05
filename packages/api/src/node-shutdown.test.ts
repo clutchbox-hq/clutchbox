@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { shutdownSignal } from '@clutchbox/server/shutdown';
 import { describe, expect, it, vi } from 'vitest';
-import { nodeServer, shutDown } from './node-upgrade';
+import { nodeServer, shutDown } from './node-upgrade.ts';
 
 // Its own file: shutting down aborts the process-wide signal, which can't be undone.
 async function listening(listener: (request: IncomingMessage, response: ServerResponse) => unknown) {

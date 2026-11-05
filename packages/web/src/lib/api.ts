@@ -7,7 +7,7 @@ import type { ForkView, LiveViewStatus } from '@clutchbox/server/computers';
 import type { Role } from '@clutchbox/server/members';
 import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { asPng, type Pasted } from './live-view-input';
+import { asPng, type Pasted } from './live-view-input.ts';
 
 export type ComputerView = {
   // Null without a credit (the metering hook), whose words it carries: the month's cost, the credit and what is left,
@@ -113,12 +113,12 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   return data;
 }
 export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string | undefined,
-    message: string,
-  ) {
+  readonly status: number;
+  readonly code: string | undefined;
+  constructor(status: number, code: string | undefined, message: string) {
     super(message);
+    this.status = status;
+    this.code = code;
   }
 }
 

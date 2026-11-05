@@ -1,8 +1,8 @@
 import type { OAuthScopeMetadataMap } from '@better-auth-ui/core/plugins/oauth-provider';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { OAuthConsent } from '../components/oauth-consent';
-import { apiGet, type ConsentRequest, type Me, type PageApi } from '../lib/page-api';
+import { OAuthConsent } from '../components/oauth-consent.tsx';
+import { apiGet, type ConsentRequest, type Me, type PageApi } from '../lib/page-api.ts';
 
 export const metadata: Metadata = { robots: { index: false } };
 const scopeMetadata: OAuthScopeMetadataMap = {

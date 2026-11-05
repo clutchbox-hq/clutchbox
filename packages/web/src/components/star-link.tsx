@@ -1,5 +1,5 @@
 import { cn } from '@clutchbox/ui/lib/utils';
-import { GitHubMark } from './github-mark';
+import { GitHubMark } from './github-mark.tsx';
 
 // Links to a GitHub repository with its mark, for the public pages' header.
 export function StarLink({ repo, className }: { repo: string; className?: string }) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { environmentQuery, MAX_LANGUAGES, parseEnvironment } from './environment';
+import { environmentQuery, MAX_LANGUAGES, parseEnvironment } from './environment.ts';
 
 describe('parseEnvironment', () => {
   it('keeps a valid zone and valid tags in order, once each', () => {

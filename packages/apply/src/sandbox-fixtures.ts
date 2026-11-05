@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Capture, CapturedCookie } from '@clutchbox/capture';
 import { chromium } from 'playwright-core';
-import { SANDBOX_CDP_PORT } from './sandbox';
+import { SANDBOX_CDP_PORT } from './sandbox.ts';
 
 // A sandbox stood in for by this machine, for tests only: commands run in a shell here, with a home of their own and
 // Playwright's Chromium as the sandbox's Chrome (bunx playwright-core install chromium), headless and, as CI runners

@@ -11,8 +11,8 @@ import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { genericOAuth, jwt, magicLink } from 'better-auth/plugins';
 import { and, eq, gt, sql } from 'drizzle-orm';
-import { clientHost, isAllowedAgentClient } from './agents';
-import { authInvitation, authMember, authOrganization } from './auth-schema';
+import { clientHost, isAllowedAgentClient } from './agents.ts';
+import { authInvitation, authMember, authOrganization } from './auth-schema.ts';
 import {
   ACCESS_TOKEN_SECONDS,
   EXTENSION_CLIENT_ID,
@@ -23,23 +23,30 @@ import {
   refreshTokenClient,
   SYNC_ACCESS_TOKEN_SECONDS,
   SYNC_SCOPE,
-} from './browsers';
-import { agentClientUrls, apiOrigin, OIDC_PROVIDER_ID, type ServerConfig } from './config';
-import { CONNECT_SCOPE, recordConnection } from './connect';
-import type { Database } from './database';
-import { type AuthPlugins, type Limits, noAuthPlugins, noLimits, noOperatorAdmin, type OperatorAdmin } from './hooks';
-import { newPublicId } from './ids';
-import { type SendEmail, smtpSender } from './mail';
-import { consentMembership, MCP_SCOPES, MEMBERSHIP_CLAIM } from './mcp';
-import * as oauthSchema from './oauth-schema';
+} from './browsers.ts';
+import { agentClientUrls, apiOrigin, OIDC_PROVIDER_ID, type ServerConfig } from './config.ts';
+import { CONNECT_SCOPE, recordConnection } from './connect.ts';
+import type { Database } from './database.ts';
+import {
+  type AuthPlugins,
+  type Limits,
+  noAuthPlugins,
+  noLimits,
+  noOperatorAdmin,
+  type OperatorAdmin,
+} from './hooks.ts';
+import { newPublicId } from './ids.ts';
+import { type SendEmail, smtpSender } from './mail.ts';
+import { consentMembership, MCP_SCOPES, MEMBERSHIP_CLAIM } from './mcp.ts';
+import * as oauthSchema from './oauth-schema.ts';
 import {
   actInOrganization,
   apiKeyLimitReached,
   organizationDisabledPaths,
   organizationPlugins,
-} from './organization-auth';
-import { activeOrganizationOf, singleOrganization, type Tenancy } from './organizations';
-import { account, apikey, billingSubscriptions, notBanned, rateLimit, session, user, verification } from './schema';
+} from './organization-auth.ts';
+import { activeOrganizationOf, singleOrganization, type Tenancy } from './organizations.ts';
+import { account, apikey, billingSubscriptions, notBanned, rateLimit, session, user, verification } from './schema.ts';
 
 // The auth adapter (and so an operator dashboard's generic adapter endpoint) reaches only auth tables, and the
 // organization plugin's fields of ours (auth-schema.ts), never captures, computers, or operations.

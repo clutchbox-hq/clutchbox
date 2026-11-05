@@ -1,7 +1,7 @@
 import { asc, desc, eq, isNull, notExists, sql } from 'drizzle-orm';
-import type { Database } from './database';
-import { newPublicId } from './ids';
-import { memberships, organizations, session, user, userSettings } from './schema';
+import type { Database } from './database.ts';
+import { newPublicId } from './ids.ts';
+import { memberships, organizations, session, user, userSettings } from './schema.ts';
 
 // Organizations and the memberships that put people in them. No 'server-only' here: the migration runner, a plain
 // Node script, backfills memberships through it.

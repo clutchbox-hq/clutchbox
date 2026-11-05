@@ -1,5 +1,5 @@
 import { siteOfHost } from '@clutchbox/capture';
-import type { CdpCookieParam } from './cookies';
+import type { CdpCookieParam } from './cookies.ts';
 
 // Sends one Chrome DevTools Protocol command and resolves with its result, rejecting on a protocol error, as
 // Playwright's and Puppeteer's CDP sessions do.

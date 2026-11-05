@@ -1,5 +1,5 @@
 import { extensionCors, tokenPreflight } from '@clutchbox/api';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/auth/*. The extension reaches only the token endpoint from its origin; extensionCors answers it there alone.
 // Extension origins stay out of trustedOrigins: Better Auth checks Origin only on requests with a cookie, and the

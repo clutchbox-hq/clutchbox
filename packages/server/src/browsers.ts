@@ -2,14 +2,14 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { type BrowserEnvironment, extensionClientId, refreshReuseSeconds, syncScope } from '@clutchbox/capture';
 import { and, asc, eq, exists, gt, gte, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
-import { deleteCaptures, deleteCapturesIn, lockMember } from './captures';
-import { textArray } from './columns';
-import type { Database } from './database';
-import { newPublicId, publicIdPattern } from './ids';
-import { logBrowserEvent } from './log';
-import { currentMember, type Member } from './organizations';
-import * as schema from './schema';
-import { isTimeZone } from './time-zones';
+import { deleteCaptures, deleteCapturesIn, lockMember } from './captures.ts';
+import { textArray } from './columns.ts';
+import type { Database } from './database.ts';
+import { newPublicId, publicIdPattern } from './ids.ts';
+import { logBrowserEvent } from './log.ts';
+import { currentMember, type Member } from './organizations.ts';
+import * as schema from './schema.ts';
+import { isTimeZone } from './time-zones.ts';
 
 // Browsers connected with OAuth. The extension is a first-party client of our Better Auth server whose
 // opaque `sync` tokens work only on the extension's routes. A connected browser is one refresh-token family: the

@@ -5,13 +5,13 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createApi } from '../../api/src/index';
-import { createAuth, getPrincipal } from './auth';
-import { readConfig, type ServerConfig } from './config';
-import { assertDatabaseEnvironment, type Database } from './database';
-import { databaseSchema } from './database-schema';
-import { fakeComputerProvider } from './fake-computer-provider';
-import * as schema from './schema';
+import { createApi } from '../../api/src/index.ts';
+import { createAuth, getPrincipal } from './auth.ts';
+import { readConfig, type ServerConfig } from './config.ts';
+import { assertDatabaseEnvironment, type Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { fakeComputerProvider } from './fake-computer-provider.ts';
+import * as schema from './schema.ts';
 
 const origin = 'http://localhost:3000';
 const config: ServerConfig = {

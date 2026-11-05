@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowedMutationOrigin, extensionOrigins } from './origins';
+import { allowedMutationOrigin, extensionOrigins } from './origins.ts';
 
 const web = 'https://www.clutchbox.dev';
 const ext = `chrome-extension://${'a'.repeat(32)}`;

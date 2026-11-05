@@ -1,6 +1,6 @@
 import type { CapturedCookie } from '@clutchbox/capture';
 import { describe, expect, it } from 'vitest';
-import { cookieChanges, toCdpCookie } from './cookies';
+import { cookieChanges, toCdpCookie } from './cookies.ts';
 
 // Synthetic cookies only; no real browser data.
 const cookie = (overrides: Partial<CapturedCookie> = {}): CapturedCookie => ({

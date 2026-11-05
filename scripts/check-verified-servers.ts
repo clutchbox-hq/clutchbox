@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { serverProofPath, serverProofSchema, verifiedServersSchema } from '../packages/capture/src/servers';
+import { serverProofPath, serverProofSchema, verifiedServersSchema } from '../packages/capture/src/servers.ts';
 
 // Checks the verified list (packages/capture/verified-servers.json): well-formed, sorted by origin, one entry per
 // origin, and each server proving it runs at its origin with the file at serverProofPath, served there without a

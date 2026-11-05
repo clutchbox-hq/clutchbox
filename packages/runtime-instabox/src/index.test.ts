@@ -1,7 +1,7 @@
 import { capture, cookie, cookieNamesCommand, localSandbox } from '@clutchbox/apply/sandbox-fixtures';
 import { MAX_STDIN_BYTES, Sandbox } from '@insforge/instabox-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyLatestCapture, type InstaboxSandbox } from './index';
+import { applyLatestCapture, type InstaboxSandbox } from './index.ts';
 
 // Instabox's command API stood in for by this machine: standard input of at most MAX_STDIN_BYTES, and a non-zero exit
 // rejects with the result, as its CommandExitError does.

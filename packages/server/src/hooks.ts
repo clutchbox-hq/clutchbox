@@ -1,8 +1,8 @@
 import 'server-only';
 import type { ComputerProvider, ComputerSize } from '@clutchbox/computer';
 import type { BetterAuthPlugin } from 'better-auth';
-import type { Database } from './database';
-import { type Member, singleOrganization, type Tenancy } from './organizations';
+import type { Database } from './database.ts';
+import { type Member, singleOrganization, type Tenancy } from './organizations.ts';
 
 // A deployment's own layers, such as the hosted service's, plug in here. The product calls metering, limits, operator
 // admin, a deployment's own Better Auth plugins, a per-organization provider account, and tenancy only through these hooks, and never imports their implementations:

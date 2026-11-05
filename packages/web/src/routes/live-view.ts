@@ -1,5 +1,5 @@
 import { liveViewHandler } from '@clutchbox/api/live-view';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/v1/live-view: its own route, not the API's, for its own maxDuration, LIVE_VIEW_MAX_DURATION_MS
 // (@clutchbox/server/computer-timing), which the route manifest gives its route file. The connection lasts until

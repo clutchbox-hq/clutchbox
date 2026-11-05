@@ -1,11 +1,11 @@
 import 'server-only';
 import { and, desc, eq, isNull, max, ne, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { agentOf, clientHost } from './agents';
-import { EXTENSION_CLIENT_ID } from './browsers';
-import type { Database } from './database';
-import { currentMember, type Member } from './organizations';
-import * as schema from './schema';
+import { agentOf, clientHost } from './agents.ts';
+import { EXTENSION_CLIENT_ID } from './browsers.ts';
+import type { Database } from './database.ts';
+import { currentMember, type Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // The MCP grant. The MCP endpoint and its tools are in packages/api/src/mcp.ts.
 

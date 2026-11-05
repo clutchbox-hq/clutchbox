@@ -10,9 +10,9 @@ import {
 } from '@clutchbox/capture';
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import type { Database } from './database';
-import { logError } from './log';
-import * as schema from './schema';
+import type { Database } from './database.ts';
+import { logError } from './log.ts';
+import * as schema from './schema.ts';
 import {
   type CaptureScope,
   captureKey,
@@ -24,7 +24,7 @@ import {
   sealCapture,
   sealScope,
   sealSettings,
-} from './sealing';
+} from './sealing.ts';
 
 // The latest capture of each browser syncing to a member (browser_captures), sealed (sealing.ts) with the membership as
 // associated data. Each is a profile on the member's computers (computers.ts, Profiles).
@@ -38,7 +38,7 @@ export {
   sealAppliedCapture,
   sealCapture,
   sealScope,
-} from './sealing';
+} from './sealing.ts';
 
 const scopeOf = (capture: Capture): CaptureScope => ({
   mode: capture.scope.mode,

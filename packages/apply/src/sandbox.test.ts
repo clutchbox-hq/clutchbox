@@ -1,8 +1,8 @@
 import { siteOfHost } from '@clutchbox/capture';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type CdpCookie, cookieParamOf, partitionCookies } from './chrome';
-import { applyInSandbox, payloads, SANDBOX_CORE, type SandboxShell } from './sandbox';
-import { capture, cookie, localSandbox } from './sandbox-fixtures';
+import { type CdpCookie, cookieParamOf, partitionCookies } from './chrome.ts';
+import { applyInSandbox, payloads, SANDBOX_CORE, type SandboxShell } from './sandbox.ts';
+import { capture, cookie, localSandbox } from './sandbox-fixtures.ts';
 
 const held: CdpCookie = {
   name: 'a',

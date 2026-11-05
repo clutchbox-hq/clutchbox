@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createProductProxy } from './proxy';
+import { createProductProxy } from './proxy.ts';
 
 // Routing that decides where every visitor lands: the canonical origin first, then the moved pages, then /.
 const canonical = 'https://www.example.test';

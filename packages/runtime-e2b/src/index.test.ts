@@ -1,7 +1,7 @@
 import { capture, cookie, cookieNamesCommand, localSandbox } from '@clutchbox/apply/sandbox-fixtures';
 import { Sandbox } from 'e2b';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyLatestCapture, type E2bSandbox, e2bShell, TEMPLATE } from './index';
+import { applyLatestCapture, type E2bSandbox, e2bShell, TEMPLATE } from './index.ts';
 
 // E2B's command API stood in for by this machine: standard input is buffered until it is closed, and a non-zero exit
 // rejects with the result, as e2b's CommandExitError does.

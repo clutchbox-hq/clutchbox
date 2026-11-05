@@ -75,11 +75,10 @@ const RESULT_MAX_CHARS = 60_000;
 const NAME_MAX_CHARS = 200;
 
 export class BrowserError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
+  readonly code: string;
+  constructor(code: string, message: string) {
     super(message);
+    this.code = code;
   }
 }
 const STALE = new BrowserError(

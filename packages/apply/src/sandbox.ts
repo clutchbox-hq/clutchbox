@@ -1,5 +1,5 @@
 import { type Capture, type CapturedCookie, siteOfCookie } from '@clutchbox/capture';
-import { cookieChanges, expiredCdpCookie, toCdpCookie } from './cookies';
+import { cookieChanges, expiredCdpCookie, toCdpCookie } from './cookies.ts';
 
 // Applying a capture to Chrome inside a sandbox the developer runs (a runtime adapter), through the sandbox's command
 // API: from outside, a sandbox's CDP port is unreachable or would have to be made public. A helper runs in the sandbox's
@@ -142,8 +142,10 @@ export type SandboxApplyResult = { kept: number; cleared: number; set: number; f
 // cdp_unavailable, cdp_connection_failed, cdp_closed, cdp_refused, bad_payload, timeout, or command_failed. Never
 // carries the command's output, which could hold cookie values.
 export class SandboxApplyError extends Error {
-  constructor(readonly code: string) {
+  readonly code: string;
+  constructor(code: string) {
     super(`Applying the capture in the sandbox failed: ${code}`);
+    this.code = code;
     this.name = 'SandboxApplyError';
   }
 }

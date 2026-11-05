@@ -13,11 +13,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clut
 import { ToggleGroup, ToggleGroupItem } from '@clutchbox/ui/components/toggle-group';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, type ComputerView, computerQuery, grantsQuery } from '../lib/api';
-import { computerStatus, resetsOn, syncedSignIns, usedShare } from '../lib/computer';
-import { lastUser } from './agent-connections';
-import { AppPage } from './app-shell';
-import { LiveViewPanel } from './live-view';
+import { api, type ComputerView, computerQuery, grantsQuery } from '../lib/api.ts';
+import { computerStatus, resetsOn, syncedSignIns, usedShare } from '../lib/computer.ts';
+import { lastUser } from './agent-connections.tsx';
+import { AppPage } from './app-shell.tsx';
+import { LiveViewPanel } from './live-view.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 // The Computer page: status and usage, live view in place, size, screen size, and reset.

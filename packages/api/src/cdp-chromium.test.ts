@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { CDP_MAX_DURATION_MS } from '../../server/src/computer-timing';
-import { useDeveloperApi } from './developer-api-fixtures';
+import { CDP_MAX_DURATION_MS } from '../../server/src/computer-timing.ts';
+import { useDeveloperApi } from './developer-api-fixtures.ts';
 
 // The CDP proxy in front of a real Chromium, driven by Playwright through a REST computer session's CDP URL
 // (developer-api-fixtures.ts). Its own file, since it needs Chromium installed (bunx playwright-core install chromium).

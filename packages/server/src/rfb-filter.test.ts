@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CUT_TEXT, MAX_FRAME, RfbClientFilter } from './rfb-filter';
+import { MAX_CUT_TEXT, MAX_FRAME, RfbClientFilter } from './rfb-filter.ts';
 
 // --- Message builders (big-endian, as noVNC 1.7.0 sends them) ---
 

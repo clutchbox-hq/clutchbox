@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import { HEARTBEAT_MS, LIVE_VIEW_CLOSE_MARGIN_MS, LIVE_VIEW_PING_MS } from './computer-timing';
-import { RELAY_CLOSE, type RelayLog, type RelayOptions, relay } from './live-view-relay';
+import { HEARTBEAT_MS, LIVE_VIEW_CLOSE_MARGIN_MS, LIVE_VIEW_PING_MS } from './computer-timing.ts';
+import { RELAY_CLOSE, type RelayLog, type RelayOptions, relay } from './live-view-relay.ts';
 
 // Real sockets on 127.0.0.1: a fake computer (websockify), a relay server, and a browser client.
 

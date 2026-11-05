@@ -4,7 +4,7 @@ import { Button } from '@clutchbox/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, browsersQuery, computerQuery, setupQuery, syncQuery } from '../lib/api';
+import { api, browsersQuery, computerQuery, setupQuery, syncQuery } from '../lib/api.ts';
 
 // Always offered, with or without a computer: it also deletes synced data and resets setup.
 export function DeleteEverything() {

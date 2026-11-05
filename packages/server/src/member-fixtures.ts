@@ -1,8 +1,8 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
-import type { Database } from './database';
-import { newPublicId } from './ids';
-import { actIn, createOrganization, type Member, type Person, singleOrganization } from './organizations';
-import * as schema from './schema';
+import type { Database } from './database.ts';
+import { newPublicId } from './ids.ts';
+import { actIn, createOrganization, type Member, type Person, singleOrganization } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // People and memberships for tests only.
 

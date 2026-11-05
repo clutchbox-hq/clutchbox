@@ -13,9 +13,9 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
-import { apiHandler, apiServer } from './api-server';
-import { apiGet, httpApi, type Me } from './lib/page-api';
-import { createServices } from './services';
+import { apiHandler, apiServer } from './api-server.ts';
+import { apiGet, httpApi, type Me } from './lib/page-api.ts';
+import { createServices } from './services.ts';
 
 // The API's own server, built from the no-op defaults, on a PGlite database instead of the pool.
 let db: Database;

@@ -29,9 +29,9 @@ import { cn } from '@clutchbox/ui/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronsUpDown, LogIn, Plus } from 'lucide-react';
 import { useId, useState } from 'react';
-import { joinableQuery, organizationsQuery } from '../lib/api';
-import { authClient } from '../lib/auth-client';
-import { Failure } from './failure';
+import { joinableQuery, organizationsQuery } from '../lib/api.ts';
+import { authClient } from '../lib/auth-client.ts';
+import { Failure } from './failure.tsx';
 
 // Switches the organization the app acts in, creates one, and leads to those that allow your email address's domain.
 // Every page's data is the current organization's, so a switch refetches it all. Shown only when there is something

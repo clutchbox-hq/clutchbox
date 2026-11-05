@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from './auth';
+import { createAuth } from './auth.ts';
 import {
   authorizeBrowser,
   CHROME_ON_MAC,
@@ -14,7 +14,7 @@ import {
   refreshBrowser,
   type Tokens,
   tokenRequest,
-} from './browser-fixtures';
+} from './browser-fixtures.ts';
 import {
   browserOf,
   browserRemoved,
@@ -27,15 +27,15 @@ import {
   SYNC_ACCESS_TOKEN_SECONDS,
   signOutBrowser,
   syncPrincipal,
-} from './browsers';
-import { bundle, cookie } from './capture-fixtures';
-import { saveCapture } from './captures';
-import type { ServerConfig } from './config';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { inTheOrganization, membership } from './member-fixtures';
-import { createOrganization, currentMember, type Member } from './organizations';
-import * as schema from './schema';
+} from './browsers.ts';
+import { bundle, cookie } from './capture-fixtures.ts';
+import { saveCapture } from './captures.ts';
+import type { ServerConfig } from './config.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { inTheOrganization, membership } from './member-fixtures.ts';
+import { createOrganization, currentMember, type Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 const origin = 'http://localhost:3097';
 const extension = `chrome-extension://${'a'.repeat(32)}`;

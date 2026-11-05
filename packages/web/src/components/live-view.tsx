@@ -36,7 +36,7 @@ import {
   useHeartbeat,
   useLiveViewClipboard,
   useLiveViewControl,
-} from '../lib/api';
+} from '../lib/api.ts';
 import {
   chord,
   clipboardEntries,
@@ -49,9 +49,9 @@ import {
   MODIFIER_CODES,
   type Pasted,
   pastedContent,
-} from '../lib/live-view-input';
-import { agentName } from './agent-connections';
-import { useLeaveGuard } from './app-shell';
+} from '../lib/live-view-input.ts';
+import { agentName } from './agent-connections.tsx';
+import { useLeaveGuard } from './app-shell.tsx';
 
 // Close codes from the relay (RELAY_CLOSE in packages/server/src/live-view-relay.ts): 4000 is its clean close
 // before the route's time limit, so reconnect at once; 4001 means this lease lost its watch (hidden too long) or the

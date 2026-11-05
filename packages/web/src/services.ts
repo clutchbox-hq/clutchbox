@@ -7,8 +7,8 @@ import { assertDatabaseEnvironment, createDatabase } from '@clutchbox/server/dat
 import type { ServerHooks } from '@clutchbox/server/hooks';
 import { logError } from '@clutchbox/server/log';
 import { providerFromConfig } from '@clutchbox/server/provider';
-import { extensionDownloadVersion } from './lib/extension-download';
-import type { PageApi } from './lib/page-api';
+import { extensionDownloadVersion } from './lib/extension-download.ts';
+import type { PageApi } from './lib/page-api.ts';
 
 export type ServicesOptions = {
   // The deployment's own API routes, mounted after the API's shared middleware.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentOf, builtInAgentClientUrls, clientHost, isAllowedAgentClient } from './agents';
+import { agentOf, builtInAgentClientUrls, clientHost, isAllowedAgentClient } from './agents.ts';
 
 describe('agent classification', () => {
   it('matches known client_id URLs exactly and leaves everything else as another agent', () => {

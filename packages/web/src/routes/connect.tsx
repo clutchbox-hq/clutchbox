@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { ConnectSteps } from '../components/connect';
-import { apiGet, type Me, type PageApi } from '../lib/page-api';
+import { ConnectSteps } from '../components/connect.tsx';
+import { apiGet, type Me, type PageApi } from '../lib/page-api.ts';
 
 export const metadata: Metadata = { title: 'Connect · Clutchbox', robots: { index: false } };
 const page = 'mx-auto flex w-full max-w-xl justify-center px-5 py-12 sm:px-8';

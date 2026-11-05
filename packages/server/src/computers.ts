@@ -17,7 +17,7 @@ import {
   type ScreenSize,
 } from '@clutchbox/computer';
 import { and, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, min, or, sql } from 'drizzle-orm';
-import { type AgentKind, agentOf, clientHost } from './agents';
+import { type AgentKind, agentOf, clientHost } from './agents.ts';
 import {
   captureView,
   latestCaptureDigest,
@@ -26,8 +26,8 @@ import {
   openAppliedCapture,
   type Profile,
   sealAppliedCapture,
-} from './captures';
-import { textArray } from './columns';
+} from './captures.ts';
+import { textArray } from './columns.ts';
 import {
   CALL_BUDGET_MS,
   CALL_HOLD_MS,
@@ -50,15 +50,15 @@ import {
   SYNC_MIN_MS,
   SYNC_SLACK_MS,
   TIME_ZONE_BUDGET_MS,
-} from './computer-timing';
-import type { Database } from './database';
-import { type Limits, type Metering, noLimits, type ServerHooks, utcDay } from './hooks';
-import { newPublicId, publicIdPattern } from './ids';
-import { logError } from './log';
-import type { Member } from './organizations';
-import * as schema from './schema';
-import type { Owner } from './sealing';
-import { markToolStep } from './tool-calls';
+} from './computer-timing.ts';
+import type { Database } from './database.ts';
+import { type Limits, type Metering, noLimits, type ServerHooks, utcDay } from './hooks.ts';
+import { newPublicId, publicIdPattern } from './ids.ts';
+import { logError } from './log.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
+import type { Owner } from './sealing.ts';
+import { markToolStep } from './tool-calls.ts';
 
 // Each member (a person in one organization) has one main computer, which only the member changes, by taking it over in
 // live view, and agents work in forks of it (Forks, below), each controlled by one computer session at a time. Timings

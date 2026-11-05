@@ -14,7 +14,7 @@ import { Separator } from '@clutchbox/ui/components/separator';
 import { Spinner } from '@clutchbox/ui/components/spinner';
 import { KeyRound, Mail } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import { ProviderButton } from './provider-button';
+import { ProviderButton } from './provider-button.tsx';
 
 // The error codes Better Auth adds to /sign-in when sign-in fails, in words; any other gets the generic message.
 const failures: Record<string, string> = {

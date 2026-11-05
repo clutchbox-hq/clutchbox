@@ -2,7 +2,7 @@
 import { Button } from '@clutchbox/ui/components/button';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { api, setupQuery } from '../lib/api';
+import { api, setupQuery } from '../lib/api.ts';
 
 // Shown once, when an agent first opens the computer; closing it is stored on the server.
 export function SetupNotice() {

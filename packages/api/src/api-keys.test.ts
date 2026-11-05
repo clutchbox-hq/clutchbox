@@ -6,20 +6,20 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CaptureRequestError, fetchCapture, listMembers } from '../../playwright/src/index';
-import { latestCaptureForKey } from '../../server/src/api-keys';
-import { createAuth } from '../../server/src/auth';
-import { saveFromBrowser } from '../../server/src/browser-fixtures';
-import { bundle, cookie } from '../../server/src/capture-fixtures';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { membership } from '../../server/src/member-fixtures';
-import type { Role } from '../../server/src/members';
-import { MAX_API_KEYS } from '../../server/src/organization-auth';
-import { createOrganization, type Member } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
+import { CaptureRequestError, fetchCapture, listMembers } from '../../playwright/src/index.ts';
+import { latestCaptureForKey } from '../../server/src/api-keys.ts';
+import { createAuth } from '../../server/src/auth.ts';
+import { saveFromBrowser } from '../../server/src/browser-fixtures.ts';
+import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { membership } from '../../server/src/member-fixtures.ts';
+import type { Role } from '../../server/src/members.ts';
+import { MAX_API_KEYS } from '../../server/src/organization-auth.ts';
+import { createOrganization, type Member } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
 
 // Organization API keys, Better Auth's api-key plugin's: who manages them through its endpoints (/api/auth/api-key),
 // and what a key reads over the developer REST API (through the Playwright adapter's client, the way developers call

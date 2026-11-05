@@ -6,11 +6,11 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { newPublicId } from './ids';
-import { person } from './member-fixtures';
-import * as schema from './schema';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { newPublicId } from './ids.ts';
+import { person } from './member-fixtures.ts';
+import * as schema from './schema.ts';
 
 // The profiles migration (0027) on data the release before it wrote: each member's capture moves to a browser, and each
 // computer's and snapshot's applied state becomes that browser's first profile, in the directory Chrome already runs.

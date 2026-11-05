@@ -10,7 +10,7 @@ import { ArrowRight, CircleCheck, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
-import { useShell } from '../deployment';
+import { useShell } from '../deployment.tsx';
 import {
   browsersQuery,
   type ComputerView,
@@ -19,14 +19,14 @@ import {
   type SetupView,
   setupQuery,
   syncQuery,
-} from '../lib/api';
-import { computerStatus, resetsOn, syncedSignIns, usedShare } from '../lib/computer';
-import { extensionDownloadUrl } from '../lib/extension-download';
-import { promptsFor } from '../lib/setup';
-import { connectedAgents, lastUser } from './agent-connections';
-import { AppPage, useAppUser } from './app-shell';
-import { CopyButton } from './copy-button';
-import { SetupNotice } from './setup-notice';
+} from '../lib/api.ts';
+import { computerStatus, resetsOn, syncedSignIns, usedShare } from '../lib/computer.ts';
+import { extensionDownloadUrl } from '../lib/extension-download.ts';
+import { promptsFor } from '../lib/setup.ts';
+import { connectedAgents, lastUser } from './agent-connections.tsx';
+import { AppPage, useAppUser } from './app-shell.tsx';
+import { CopyButton } from './copy-button.tsx';
+import { SetupNotice } from './setup-notice.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 

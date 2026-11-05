@@ -6,17 +6,17 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '../../server/src/auth';
-import { connectBrowser } from '../../server/src/browser-fixtures';
-import { ensureExtensionClient } from '../../server/src/browsers';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { defaultServerHooks, type Limits, noLimits } from '../../server/src/hooks';
-import { membership, switchTo } from '../../server/src/member-fixtures';
-import { createOrganization } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
+import { createAuth } from '../../server/src/auth.ts';
+import { connectBrowser } from '../../server/src/browser-fixtures.ts';
+import { ensureExtensionClient } from '../../server/src/browsers.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { defaultServerHooks, type Limits, noLimits } from '../../server/src/hooks.ts';
+import { membership, switchTo } from '../../server/src/member-fixtures.ts';
+import { createOrganization } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
 
 // Connect: an organization's app sends a person through sign-in, joining, the extension, and consent, and gets back
 // their member ID and its own ID for them. Driven through Better Auth's endpoints and our API, as the pages drive them.

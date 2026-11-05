@@ -1,13 +1,13 @@
 import 'server-only';
 import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
-import { removeAllBrowsers } from './browsers';
-import { destroyProviderComputers, type Providers, providerFor } from './computers';
-import type { Database } from './database';
-import { type Limits, noLimits } from './hooks';
-import { newPublicId, publicIdPattern } from './ids';
-import { revokeMcpGrants } from './mcp';
-import { actIn, type Member, type Person } from './organizations';
-import * as schema from './schema';
+import { removeAllBrowsers } from './browsers.ts';
+import { destroyProviderComputers, type Providers, providerFor } from './computers.ts';
+import type { Database } from './database.ts';
+import { type Limits, noLimits } from './hooks.ts';
+import { newPublicId, publicIdPattern } from './ids.ts';
+import { revokeMcpGrants } from './mcp.ts';
+import { actIn, type Member, type Person } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Members: who is in an organization, joining by email domain, and leaving. Better Auth's organization plugin does the
 // rest (organization-auth.ts): invitations, accepting them, and role changes. Leaving and removing stay here, since

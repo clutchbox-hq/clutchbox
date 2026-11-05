@@ -8,9 +8,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRoute } from './routes/api';
-import { authRoute } from './routes/auth';
-import { createServices } from './services';
+import { apiRoute } from './routes/api.ts';
+import { authRoute } from './routes/auth.ts';
+import { createServices } from './services.ts';
 
 // The product's services, built from the no-op defaults, on a PGlite database instead of the pool.
 let db: Database;

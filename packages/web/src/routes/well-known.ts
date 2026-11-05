@@ -1,6 +1,6 @@
 import { serverProofPath } from '@clutchbox/capture';
 import { apiOrigin } from '@clutchbox/server/config';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /.well-known/*: the auth server's discovery documents, and the file naming this server's origin, which the verified
 // list's CI check reads, and its API's, which the CLI connects agents to.

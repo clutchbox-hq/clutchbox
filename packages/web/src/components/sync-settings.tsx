@@ -7,7 +7,15 @@ import { Label } from '@clutchbox/ui/components/label';
 import { Textarea } from '@clutchbox/ui/components/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, browsersQuery, computerQuery, type SyncChange, type SyncView, setupQuery, syncQuery } from '../lib/api';
+import {
+  api,
+  browsersQuery,
+  computerQuery,
+  type SyncChange,
+  type SyncView,
+  setupQuery,
+  syncQuery,
+} from '../lib/api.ts';
 
 const heading = 'font-heading text-xl font-medium';
 

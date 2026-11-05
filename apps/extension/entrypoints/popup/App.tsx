@@ -1,15 +1,15 @@
 import { type CaptureRequest, type StatusResponse, siteName, siteOfInput } from '@clutchbox/capture';
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
-import { allSitesOffered, distribution } from '../../src/build';
-import { serverOrigin } from '../../src/server';
-import { Button } from '../../src/ui/components/button';
-import { Input } from '../../src/ui/components/input';
-import { Connections, connectionName, otherHost, receives } from '../../src/ui/connections';
-import { AllSitesDisclosure, SitesDisclosure } from '../../src/ui/disclosures';
-import { SuggestedSites } from '../../src/ui/suggested-sites';
-import { hint, SyncStatus } from '../../src/ui/sync-status';
-import { pendingMessage, useCaptureActions } from '../../src/ui/use-capture-actions';
+import { allSitesOffered, distribution } from '../../src/build.ts';
+import { serverOrigin } from '../../src/server.ts';
+import { Button } from '../../src/ui/components/button.tsx';
+import { Input } from '../../src/ui/components/input.tsx';
+import { Connections, connectionName, otherHost, receives } from '../../src/ui/connections.tsx';
+import { AllSitesDisclosure, SitesDisclosure } from '../../src/ui/disclosures.tsx';
+import { SuggestedSites } from '../../src/ui/suggested-sites.tsx';
+import { hint, SyncStatus } from '../../src/ui/sync-status.tsx';
+import { pendingMessage, useCaptureActions } from '../../src/ui/use-capture-actions.ts';
 
 // Opening the popup grants activeTab, which is what lets it read the current tab's address.
 async function currentSite(): Promise<string | null> {

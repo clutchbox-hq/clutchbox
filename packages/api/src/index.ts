@@ -113,10 +113,10 @@ import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { failureBody, failureStatus } from './cdp';
-import { allowedMutationOrigin, isPinnedExtension, SYNC_PATHS } from './origins';
+import { failureBody, failureStatus } from './cdp.ts';
+import { allowedMutationOrigin, isPinnedExtension, SYNC_PATHS } from './origins.ts';
 
-export { allowedMutationOrigin, extensionCors, tokenPreflight } from './origins';
+export { allowedMutationOrigin, extensionCors, tokenPreflight } from './origins.ts';
 
 // App auth (a web session, our web app's) or, on the extension's routes, a sync token, which also names the browser and
 // its membership.

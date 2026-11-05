@@ -9,11 +9,11 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
-import { createAuth } from '../../server/src/auth';
-import { connectBrowser, EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from '../../server/src/browser-fixtures';
-import { EXTENSION_CLIENT_ID, ensureExtensionClient, removeBrowser } from '../../server/src/browsers';
-import { bundle, cookie } from '../../server/src/capture-fixtures';
-import { deleteCaptures } from '../../server/src/captures';
+import { createAuth } from '../../server/src/auth.ts';
+import { connectBrowser, EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from '../../server/src/browser-fixtures.ts';
+import { EXTENSION_CLIENT_ID, ensureExtensionClient, removeBrowser } from '../../server/src/browsers.ts';
+import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
+import { deleteCaptures } from '../../server/src/captures.ts';
 import {
   COMPUTER_ID_PATTERN,
   deleteMainComputer,
@@ -22,11 +22,11 @@ import {
   openComputerSession,
   SESSION_ID_PATTERN,
   takeOverComputer,
-} from '../../server/src/computers';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { noMetering, noOperatorAdmin } from '../../server/src/hooks';
+} from '../../server/src/computers.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
 import {
   consentMembership,
   hasLiveGrant,
@@ -34,12 +34,12 @@ import {
   MCP_SCOPE,
   revokeMcpGrant,
   revokeMcpGrants,
-} from '../../server/src/mcp';
-import { inTheOrganization, switchTo } from '../../server/src/member-fixtures';
-import { createOrganization, currentMember } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
-import { createMcpEndpoint } from './mcp';
+} from '../../server/src/mcp.ts';
+import { inTheOrganization, switchTo } from '../../server/src/member-fixtures.ts';
+import { createOrganization, currentMember } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
+import { createMcpEndpoint } from './mcp.ts';
 
 const origin = 'http://localhost:3098';
 const resource = `${origin}/api/mcp`;

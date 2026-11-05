@@ -2,7 +2,7 @@ import { type AgentKind, agentAddCommands, mcpServerName } from '@clutchbox/serv
 import { buttonVariants } from '@clutchbox/ui/components/button';
 import { Input } from '@clutchbox/ui/components/input';
 import type { ReactNode } from 'react';
-import { CopyButton } from './copy-button';
+import { CopyButton } from './copy-button.tsx';
 
 // How to connect each agent, shown on the app's Agents page and the public setup guides, so both stay the same.
 const strong = (text: string) => <strong className="font-medium text-foreground">{text}</strong>;

@@ -4,13 +4,13 @@ import type { AddressInfo } from 'node:net';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from '../../server/src/browser-fixtures';
-import { bundle, cookie } from '../../server/src/capture-fixtures';
-import { CDP_CLOSE } from '../../server/src/cdp-relay';
-import { handBackComputer, listForks, SESSION_ID_PATTERN, takeOverComputer } from '../../server/src/computers';
-import type { Member } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { useDeveloperApi } from './developer-api-fixtures';
+import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from '../../server/src/browser-fixtures.ts';
+import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
+import { CDP_CLOSE } from '../../server/src/cdp-relay.ts';
+import { handBackComputer, listForks, SESSION_ID_PATTERN, takeOverComputer } from '../../server/src/computers.ts';
+import type { Member } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { useDeveloperApi } from './developer-api-fixtures.ts';
 
 // Computer sessions over the developer REST API and the CDP proxy, called the way developers call them: through the
 // SDK, over real HTTP and WebSockets (developer-api-fixtures.ts). Where a test needs to see what reaches the fork's

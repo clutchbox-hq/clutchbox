@@ -1,5 +1,5 @@
 import { assertDatabaseEnvironment } from '@clutchbox/server/database';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/health.
 export const healthRoute = (getServices: GetServices) =>

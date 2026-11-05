@@ -15,9 +15,9 @@ import { Label } from '@clutchbox/ui/components/label';
 import { Textarea } from '@clutchbox/ui/components/textarea';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
-import { api, type ConnectApp, connectAppsQuery } from '../lib/api';
-import { CopyButton } from './copy-button';
-import { Failure } from './failure';
+import { api, type ConnectApp, connectAppsQuery } from '../lib/api.ts';
+import { CopyButton } from './copy-button.tsx';
+import { Failure } from './failure.tsx';
 
 // Connect apps: the organization's own apps, which send people here to sign in, join, and link their account, and
 // get back their member ID. The client secret is shown once, right after registering.

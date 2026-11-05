@@ -1,14 +1,14 @@
 import type { ServerResponse } from '@clutchbox/capture';
 import { useEffect, useRef, useState } from 'react';
-import { allSitesOffered } from '../../src/build';
-import { serverOrigin } from '../../src/server';
-import { AnotherServer, ServerWarning } from '../../src/ui/another-server';
-import { Button } from '../../src/ui/components/button';
-import { Connections, connectionName, otherHost } from '../../src/ui/connections';
-import { AllSitesDisclosure, SitesDisclosure } from '../../src/ui/disclosures';
-import { SuggestedSites } from '../../src/ui/suggested-sites';
-import { hint, SyncStatus, syncMessage } from '../../src/ui/sync-status';
-import { pendingMessage, type ServerChoice, useCaptureActions } from '../../src/ui/use-capture-actions';
+import { allSitesOffered } from '../../src/build.ts';
+import { serverOrigin } from '../../src/server.ts';
+import { AnotherServer, ServerWarning } from '../../src/ui/another-server.tsx';
+import { Button } from '../../src/ui/components/button.tsx';
+import { Connections, connectionName, otherHost } from '../../src/ui/connections.tsx';
+import { AllSitesDisclosure, SitesDisclosure } from '../../src/ui/disclosures.tsx';
+import { SuggestedSites } from '../../src/ui/suggested-sites.tsx';
+import { hint, SyncStatus, syncMessage } from '../../src/ui/sync-status.tsx';
+import { pendingMessage, type ServerChoice, useCaptureActions } from '../../src/ui/use-capture-actions.ts';
 
 const heading = 'font-heading text-2xl font-medium';
 

@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { e2bComputerProvider, TEMPLATE } from '@clutchbox/e2b';
 import { describe, expect, it, vi } from 'vitest';
-import { readConfig } from './config';
-import { providerFromConfig } from './provider';
+import { readConfig } from './config.ts';
+import { providerFromConfig } from './provider.ts';
 
 vi.mock('@clutchbox/e2b', async original => {
   const actual = await original<typeof import('@clutchbox/e2b')>();

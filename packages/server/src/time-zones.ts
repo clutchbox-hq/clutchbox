@@ -1,8 +1,8 @@
 import 'server-only';
 import { timeZonePattern } from '@clutchbox/capture/environment';
 import { sql } from 'drizzle-orm';
-import type { Database } from './database';
-import { userSettings } from './schema';
+import type { Database } from './database.ts';
+import { userSettings } from './schema.ts';
 
 // An IANA zone name, like America/Los_Angeles, UTC, or Etc/GMT+5. It becomes a path on the computer, so the
 // pattern (the same as the columns' CHECK) admits no dots or spaces; Intl rejects names that are not zones.

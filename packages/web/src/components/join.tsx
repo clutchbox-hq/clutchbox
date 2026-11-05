@@ -6,9 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clut
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ApiError, api, joinableQuery, type Role } from '../lib/api';
-import { authClient } from '../lib/auth-client';
-import { Failure } from './failure';
+import { ApiError, api, joinableQuery, type Role } from '../lib/api.ts';
+import { authClient } from '../lib/auth-client.ts';
+import { Failure } from './failure.tsx';
 
 export const roleNames: Record<Role, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' };
 export const aRole: Record<Role, string> = { owner: 'an owner', admin: 'an admin', member: 'a member' };

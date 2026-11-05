@@ -9,13 +9,13 @@ import { ChevronDown } from 'lucide-react';
 import Image from 'next/image';
 import { type ReactNode, useSyncExternalStore } from 'react';
 import installPicture from '../assets/extension-install.png';
-import { useShell } from '../deployment';
-import { type ComputerView, computerQuery, setupQuery, syncQuery } from '../lib/api';
-import { isSupportedBrowser } from '../lib/setup';
-import { AppPage } from './app-shell';
-import { ConnectedBrowsers } from './connected-browsers';
-import { CopyButton } from './copy-button';
-import { SyncSettingsPanel } from './sync-settings';
+import { useShell } from '../deployment.tsx';
+import { type ComputerView, computerQuery, setupQuery, syncQuery } from '../lib/api.ts';
+import { isSupportedBrowser } from '../lib/setup.ts';
+import { AppPage } from './app-shell.tsx';
+import { ConnectedBrowsers } from './connected-browsers.tsx';
+import { CopyButton } from './copy-button.tsx';
+import { SyncSettingsPanel } from './sync-settings.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 function captureLines({ capture, computer }: ComputerView) {

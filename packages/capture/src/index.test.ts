@@ -11,7 +11,7 @@ import {
   siteOfInput,
   sitesSchema,
   withCompanions,
-} from './index';
+} from './index.ts';
 
 const cookie: CapturedCookie = {
   name: 'synthetic',

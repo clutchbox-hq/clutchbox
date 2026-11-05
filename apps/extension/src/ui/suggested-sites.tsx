@@ -1,6 +1,6 @@
 import { type ExtensionConfig, type SuggestedSite, withCompanions } from '@clutchbox/capture';
-import { Button } from './components/button';
-import { hint } from './sync-status';
+import { Button } from './components/button.tsx';
+import { hint } from './sync-status.tsx';
 
 // The suggested sites by category, in the order the server's config lists them. `hideAdded` leaves out rows whose
 // sites are all added.

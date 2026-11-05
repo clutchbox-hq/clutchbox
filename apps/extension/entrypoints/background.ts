@@ -1,8 +1,8 @@
 import { userAgentHints } from '@clutchbox/capture';
 import { defineBackground } from 'wxt/utils/define-background';
-import { distribution } from '../src/build';
-import { CaptureController, syncAlarm, trustedSender } from '../src/controller';
-import { serverOrigin } from '../src/server';
+import { distribution } from '../src/build.ts';
+import { CaptureController, syncAlarm, trustedSender } from '../src/controller.ts';
+import { serverOrigin } from '../src/server.ts';
 
 export default defineBackground(() => {
   const controller = new CaptureController(

@@ -1,13 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Capture } from '@clutchbox/capture';
 import { expect } from 'vitest';
-import type { Auth } from './auth';
-import { browserOf, EXTENSION_CLIENT_ID } from './browsers';
-import { saveCapture } from './captures';
-import type { Database } from './database';
-import { newPublicId } from './ids';
-import type { Member } from './organizations';
-import * as schema from './schema';
+import type { Auth } from './auth.ts';
+import { browserOf, EXTENSION_CLIENT_ID } from './browsers.ts';
+import { saveCapture } from './captures.ts';
+import type { Database } from './database.ts';
+import { newPublicId } from './ids.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Connects a synthetic browser through the real OAuth flow, for tests only.
 export const CHROME_ON_MAC =

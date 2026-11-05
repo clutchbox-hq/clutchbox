@@ -3,9 +3,9 @@ import { attachDatabasePool } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { dataClassFor, type ServerConfig } from './config';
-import { databaseSchema } from './database-schema';
-import * as schema from './schema';
+import { dataClassFor, type ServerConfig } from './config.ts';
+import { databaseSchema } from './database-schema.ts';
+import * as schema from './schema.ts';
 export type Database = NodePgDatabase<typeof databaseSchema>;
 export function createDatabase(connectionString: string) {
   const vercel = Boolean(process.env.VERCEL);

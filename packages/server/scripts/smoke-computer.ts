@@ -12,7 +12,7 @@ import { toCdpCookie } from '@clutchbox/apply';
 import { DEFAULT_SCREEN, FIRST_PROFILE, pngSize, SCREEN_NAMES, SCREENS } from '@clutchbox/computer';
 import { e2bComputerProvider, HELPER_DIR, REVISION, REVISION_FILE } from '@clutchbox/e2b';
 import { WebSocket } from 'ws';
-import { bundle, cookie } from '../src/capture-fixtures';
+import { bundle, cookie } from '../src/capture-fixtures.ts';
 import {
   CALL_HOLD_MS,
   CDP_ENDPOINT_MS,
@@ -21,7 +21,7 @@ import {
   PROFILE_SWITCH_BUDGET_MS,
   REFRESH_BUDGET_MS,
   SYNC_BUDGET_MS,
-} from '../src/computer-timing';
+} from '../src/computer-timing.ts';
 
 if (!process.env.E2B_API_KEY) {
   const cli = JSON.parse(await readFile(join(homedir(), '.e2b', 'config.json'), 'utf8').catch(() => '{}'));

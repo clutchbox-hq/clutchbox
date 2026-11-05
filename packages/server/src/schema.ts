@@ -16,8 +16,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, key, time, timestamps } from './columns';
-import { apikey, oauthClient } from './oauth-schema';
+import { createdAt, id, key, time, timestamps } from './columns.ts';
+import { apikey, oauthClient } from './oauth-schema.ts';
 
 export const user = pgTable('auth_user', {
   id: text('id').primaryKey(),
@@ -123,7 +123,7 @@ export const installation = pgTable(
   ],
 );
 
-export * from './oauth-schema';
+export * from './oauth-schema.ts';
 
 // CHECK for a state column: the list is also the column's TypeScript type.
 const oneOf = (column: AnyPgColumn, values: readonly string[]) =>

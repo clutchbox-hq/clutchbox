@@ -1,12 +1,12 @@
 import 'server-only';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
-import { TOOL_CALL_RETENTION_MS } from './computer-timing';
-import type { Database } from './database';
-import { publicIdPattern } from './ids';
-import { errorLabel, logError } from './log';
-import type { Member } from './organizations';
-import * as schema from './schema';
+import { TOOL_CALL_RETENTION_MS } from './computer-timing.ts';
+import type { Database } from './database.ts';
+import { publicIdPattern } from './ids.ts';
+import { errorLabel, logError } from './log.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // MCP tool call records: what each call was, how long it took, and how it ended,
 // for debugging and usage. Never a call's arguments or results, which can hold typed passwords, commands,

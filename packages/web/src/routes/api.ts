@@ -1,5 +1,5 @@
 import { extensionCors } from '@clutchbox/api';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/v1/*. The API answers CORS itself; a 503 from here needs it too, or the extension sees a network error instead.
 export const apiRoute = (getServices: GetServices) =>

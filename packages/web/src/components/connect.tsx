@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clut
 import { Spinner } from '@clutchbox/ui/components/spinner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { api, type ConnectStatus, connectStatusQuery } from '../lib/api';
-import { JoinDisclosure } from './join';
+import { api, type ConnectStatus, connectStatusQuery } from '../lib/api.ts';
+import { JoinDisclosure } from './join.tsx';
 
 const POLL_MS = 3000;
 

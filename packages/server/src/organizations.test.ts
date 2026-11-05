@@ -5,10 +5,10 @@ import { and, asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createAuth } from './auth';
-import type { ServerConfig } from './config';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
+import { createAuth } from './auth.ts';
+import type { ServerConfig } from './config.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
 import {
   actIn,
   backfillMemberships,
@@ -17,8 +17,8 @@ import {
   organizationsOf,
   singleOrganization,
   type Tenancy,
-} from './organizations';
-import * as schema from './schema';
+} from './organizations.ts';
+import * as schema from './schema.ts';
 
 const config: ServerConfig = {
   APP_ENV: 'test',

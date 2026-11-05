@@ -7,11 +7,11 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createAuth } from '../../server/src/auth';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import * as schema from '../../server/src/schema';
-import { type ClientAddress, nodeServer } from './node-upgrade';
+import { createAuth } from '../../server/src/auth.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import * as schema from '../../server/src/schema.ts';
+import { type ClientAddress, nodeServer } from './node-upgrade.ts';
 
 // The web app's Node server in front of real Better Auth on PGlite: its rate limits must key on the client, not on
 // an X-Forwarded-For the client chose. The WebSocket path is tested end to end in live-view.test.ts.

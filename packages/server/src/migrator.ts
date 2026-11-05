@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { PoolClient } from 'pg';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { backfillMemberships, type Tenancy } from './organizations';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { backfillMemberships, type Tenancy } from './organizations.ts';
 
 export const migrationsFolder = fileURLToPath(new URL('../migrations', import.meta.url));
 

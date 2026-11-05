@@ -32,7 +32,7 @@ import {
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, type MouseEvent, type ReactNode, type RefObject, useContext, useEffect, useRef } from 'react';
-import { shellIcons, useShell } from '../deployment';
+import { shellIcons, useShell } from '../deployment.tsx';
 import {
   api,
   browsersQuery,
@@ -42,10 +42,10 @@ import {
   type SetupView,
   setupQuery,
   syncQuery,
-} from '../lib/api';
-import { computerStatus } from '../lib/computer';
-import { UserButton } from './auth/user-button';
-import { OrganizationSwitcher } from './organization-switcher';
+} from '../lib/api.ts';
+import { computerStatus } from '../lib/computer.ts';
+import { UserButton } from './auth/user-button.tsx';
+import { OrganizationSwitcher } from './organization-switcher.tsx';
 
 export type AppUser = { id: string; name: string; email: string; image?: string | null };
 const UserContext = createContext<AppUser | null>(null);

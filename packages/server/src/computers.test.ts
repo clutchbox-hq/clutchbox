@@ -6,10 +6,10 @@ import { desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures';
-import { recordBrowserEnvironment, removeBrowser } from './browsers';
-import { bundle, cookie } from './capture-fixtures';
-import { deleteCaptures } from './captures';
+import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures.ts';
+import { recordBrowserEnvironment, removeBrowser } from './browsers.ts';
+import { bundle, cookie } from './capture-fixtures.ts';
+import { deleteCaptures } from './captures.ts';
 import {
   accountRefusal,
   type Caller,
@@ -37,18 +37,18 @@ import {
   sweepForks,
   takeOverComputer,
   useComputerSession,
-} from './computers';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { fakeComputerProvider } from './fake-computer-provider';
-import { heartbeat, heartbeatSchema } from './heartbeat';
-import { type Metering, type MeteringRefusal, noLimits, noMetering } from './hooks';
-import { newPublicId } from './ids';
-import { revokeMcpGrant, revokeMcpGrants } from './mcp';
-import { membership, person } from './member-fixtures';
-import type { Member } from './organizations';
-import * as schema from './schema';
-import { setTimeZone } from './time-zones';
+} from './computers.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { fakeComputerProvider } from './fake-computer-provider.ts';
+import { heartbeat, heartbeatSchema } from './heartbeat.ts';
+import { type Metering, type MeteringRefusal, noLimits, noMetering } from './hooks.ts';
+import { newPublicId } from './ids.ts';
+import { revokeMcpGrant, revokeMcpGrants } from './mcp.ts';
+import { membership, person } from './member-fixtures.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
+import { setTimeZone } from './time-zones.ts';
 
 let pg: PGlite;
 let db: Database;

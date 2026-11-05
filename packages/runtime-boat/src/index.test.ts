@@ -3,7 +3,7 @@ import { BoatApi, type CommandResponse, Configuration, waitUntilReady } from '@b
 import { applyInSandbox } from '@clutchbox/apply/sandbox';
 import { capture, cookie, cookieNamesCommand, localSandbox } from '@clutchbox/apply/sandbox-fixtures';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyLatestCapture, type BoatSandbox, boatShell, PRIVATE_DIR } from './index';
+import { applyLatestCapture, type BoatSandbox, boatShell, PRIVATE_DIR } from './index.ts';
 
 // Boat's command and file APIs stood in for by this machine: no standard input, and whole commands kept, as Boat's
 // command history keeps them.

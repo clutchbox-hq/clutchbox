@@ -6,8 +6,8 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures';
-import { bundle, cookie, siteBundle } from './capture-fixtures';
+import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures.ts';
+import { bundle, cookie, siteBundle } from './capture-fixtures.ts';
 import {
   adoptSyncSettings,
   captureKey,
@@ -22,12 +22,12 @@ import {
   sealAppliedCapture,
   sealCapture,
   syncView,
-} from './captures';
-import type { Database } from './database';
-import { databaseSchema } from './database-schema';
-import { membership, person } from './member-fixtures';
-import type { Member } from './organizations';
-import * as schema from './schema';
+} from './captures.ts';
+import type { Database } from './database.ts';
+import { databaseSchema } from './database-schema.ts';
+import { membership, person } from './member-fixtures.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 let pg: PGlite;
 let db: Database;

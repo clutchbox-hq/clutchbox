@@ -48,12 +48,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ellipsis } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-import { api, organizationQuery, type Role } from '../lib/api';
-import { authClient } from '../lib/auth-client';
-import { AppPage } from './app-shell';
-import { CopyButton } from './copy-button';
-import { Failure } from './failure';
-import { aRole, roleNames } from './join';
+import { api, organizationQuery, type Role } from '../lib/api.ts';
+import { authClient } from '../lib/auth-client.ts';
+import { AppPage } from './app-shell.tsx';
+import { CopyButton } from './copy-button.tsx';
+import { Failure } from './failure.tsx';
+import { aRole, roleNames } from './join.tsx';
 
 // Owners manage everyone; admins manage admins and members. Only owners make owners. The server holds the same rules
 // (organization-auth.ts); these only decide what to offer.

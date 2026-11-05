@@ -1,6 +1,6 @@
 import type { SessionHandle } from '@clutchbox/server/computers';
 import { describe, expect, it } from 'vitest';
-import { browserAction, missingInput, SNAPSHOT } from './browser';
+import { browserAction, missingInput, SNAPSHOT } from './browser.ts';
 
 const PAGE = 'A'.repeat(32);
 const OTHER = 'B'.repeat(32);

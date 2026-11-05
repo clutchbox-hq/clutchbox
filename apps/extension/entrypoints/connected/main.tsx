@@ -1,5 +1,5 @@
-import { mount } from '../../src/ui/mount';
-import { App } from './App';
+import { mount } from '../../src/ui/mount.tsx';
+import { App } from './App.tsx';
 
 // The OAuth redirect page. It runs only top-level: framed, it does nothing. The code leaves the address bar
 // and history before anything renders.

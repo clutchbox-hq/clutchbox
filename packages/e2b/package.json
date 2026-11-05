@@ -29,7 +29,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "build-template": "node --import tsx scripts/build-template.ts"
+    "build-template": "node scripts/build-template.ts"
   },
   "dependencies": {
     "@clutchbox/apply": "workspace:*",

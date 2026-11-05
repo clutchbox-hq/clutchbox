@@ -1,7 +1,7 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, text } from 'drizzle-orm/pg-core';
-import { time } from './columns';
-import { user } from './schema';
+import { time } from './columns.ts';
+import { user } from './schema.ts';
 
 // Better Auth's organization plugin, over our organizations, memberships, and organization_invitations tables
 // (schema.ts): its ID is the row's public_id, and only its own fields exist here, so the integer keys and the app's

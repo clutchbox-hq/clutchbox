@@ -6,26 +6,26 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '../../server/src/auth';
-import { connectBrowser, saveFromBrowser } from '../../server/src/browser-fixtures';
-import { ensureExtensionClient } from '../../server/src/browsers';
-import { bundle, cookie } from '../../server/src/capture-fixtures';
-import { openComputerSession } from '../../server/src/computers';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { defaultServerHooks, type Limits, noLimits, noMetering } from '../../server/src/hooks';
-import { membership } from '../../server/src/member-fixtures';
-import type { Role } from '../../server/src/members';
+import { createAuth } from '../../server/src/auth.ts';
+import { connectBrowser, saveFromBrowser } from '../../server/src/browser-fixtures.ts';
+import { ensureExtensionClient } from '../../server/src/browsers.ts';
+import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
+import { openComputerSession } from '../../server/src/computers.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { defaultServerHooks, type Limits, noLimits, noMetering } from '../../server/src/hooks.ts';
+import { membership } from '../../server/src/member-fixtures.ts';
+import type { Role } from '../../server/src/members.ts';
 import {
   createOrganization,
   currentMember,
   type Member,
   singleOrganization,
   type Tenancy,
-} from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
+} from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
 
 // Members and roles over HTTP, through our routes and Better Auth's organization plugin's (/api/auth/organization): who
 // may invite, change roles, remove, and set join domains; joining by invitation and by email domain; switching and

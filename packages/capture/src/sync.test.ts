@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captureDigest, siteOfCookie, siteOfHost, siteOfUrl } from './sync';
+import { captureDigest, siteOfCookie, siteOfHost, siteOfUrl } from './sync.ts';
 
 const cookie = {
   name: 'sid',

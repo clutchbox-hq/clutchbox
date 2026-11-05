@@ -21,7 +21,7 @@ import { Skeleton } from '@clutchbox/ui/components/skeleton';
 import { Spinner } from '@clutchbox/ui/components/spinner';
 import { KeyRound, Mail, Plug } from 'lucide-react';
 import { Fragment } from 'react';
-import { useAppSignOut } from './user-button';
+import { useAppSignOut } from './user-button.tsx';
 
 const settings = '/app/settings';
 // The error codes Better Auth adds to Settings when connecting fails, in words; any other gets the generic message.

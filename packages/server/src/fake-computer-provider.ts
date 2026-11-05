@@ -8,7 +8,7 @@ import {
   type PlatformOverride,
   SCREENS,
 } from '@clutchbox/computer';
-import type { ComputerAction, ComputerProvider } from './computers';
+import type { ComputerAction, ComputerProvider } from './computers.ts';
 
 const cookieHost = (cookie: CdpCookieParam) => cookie.domain ?? new URL(cookie.url!).hostname;
 export const cookieSite = (cookie: CdpCookieParam) => siteOfHost(cookieHost(cookie));

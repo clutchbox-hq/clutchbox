@@ -1,8 +1,8 @@
 // Better Auth 1.7.11 plugin schema. Keep in sync with the pinned MCP, JWT, and API key plugins.
 import { sql } from 'drizzle-orm';
 import { boolean, check, index, integer, jsonb, pgTable, text, unique } from 'drizzle-orm/pg-core';
-import { time } from './columns';
-import { organizations, session, user } from './schema';
+import { time } from './columns.ts';
+import { organizations, session, user } from './schema.ts';
 
 export const oauthClient = pgTable(
   'oauth_client',

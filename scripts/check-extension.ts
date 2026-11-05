@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { serverOriginOf } from '../apps/extension/src/origin';
-import { compareVersions } from '../packages/capture/src/index';
+import { serverOriginOf } from '../apps/extension/src/origin.ts';
+import { compareVersions } from '../packages/capture/src/index.ts';
 
 // Usage: check-extension [unpacked build folder], by default the local build. It checks the build targets
 // WXT_SERVER_ORIGIN, or the extension's default origin, as the build itself does.

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { companions, type SuggestedSite, suggestedSites } from './sites';
-import { siteOfHost } from './sync';
+import { companions, type SuggestedSite, suggestedSites } from './sites.ts';
+import { siteOfHost } from './sync.ts';
 
 export const browserOrigins = ['http://*/*', 'https://*/*'] as const;
 // Chrome rejects `*://` patterns against the optional `http://*/*` and `https://*/*` grants, so both schemes are named.
@@ -516,8 +516,8 @@ export interface ExchangeResponse {
   // The tab the connect click came from, to return to.
   opener?: number;
 }
-export * from './environment';
-export * from './oauth';
-export * from './servers';
-export * from './sites';
-export * from './sync';
+export * from './environment.ts';
+export * from './oauth.ts';
+export * from './servers.ts';
+export * from './sites.ts';
+export * from './sync.ts';

@@ -20,7 +20,7 @@ import {
   STREAM_ORIGIN,
   SYNC_CORE,
   UA_OVERRIDE,
-} from './index';
+} from './index.ts';
 
 // The E2B SDK, mocked: tests stand in a sandbox whose commands they answer.
 const e2b = vi.hoisted(() => ({ sandbox: undefined as unknown }));

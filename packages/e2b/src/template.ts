@@ -1,6 +1,6 @@
 import { COMPUTER_SIZE_NAMES, COMPUTER_SIZES, type ComputerSize } from '@clutchbox/computer';
 import { type BuildOptions, Template, waitForURL } from 'e2b';
-import { HELPER_DIR, REVISION, REVISION_FILE, TEMPLATE, templateFor, writeHelpers } from './index';
+import { HELPER_DIR, REVISION, REVISION_FILE, TEMPLATE, templateFor, writeHelpers } from './index.ts';
 
 // The E2B template computers start from: E2B Desktop plus current Chrome, Node for the helpers, and the helpers
 // themselves. Its snapshot already runs the desktop and Chrome, so a new computer is ready when create returns.

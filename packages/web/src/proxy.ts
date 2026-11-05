@@ -1,6 +1,6 @@
 import { getSessionCookie } from 'better-auth/cookies';
 import { type NextRequest, NextResponse } from 'next/server';
-import { canonicalAuthUrl } from './lib/canonical-auth';
+import { canonicalAuthUrl } from './lib/canonical-auth.ts';
 
 const redirect = (target: URL) => {
   const response = NextResponse.redirect(target, 307);

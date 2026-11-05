@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { Settings } from '../components/settings';
-import { apiData, type PageApi, type SignInMethods } from '../lib/page-api';
+import { Settings } from '../components/settings.tsx';
+import { apiData, type PageApi, type SignInMethods } from '../lib/page-api.ts';
 
 export const metadata: Metadata = { title: 'Settings · Clutchbox' };
 // /app/settings.

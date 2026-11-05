@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { unzipSync } from 'fflate';
-import { serverOriginOf } from '../apps/extension/src/origin';
+import { serverOriginOf } from '../apps/extension/src/origin.ts';
 
 const root = path.join(import.meta.dirname, '..');
 const extensionDir = path.join(root, 'apps/extension');

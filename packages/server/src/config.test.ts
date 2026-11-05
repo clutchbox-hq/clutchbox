@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { builtInAgentClientUrls } from './agents';
-import { agentClientUrls, apiOrigin, readConfig, signInMethods } from './config';
+import { builtInAgentClientUrls } from './agents.ts';
+import { agentClientUrls, apiOrigin, readConfig, signInMethods } from './config.ts';
 
 const base = {
   APP_ENV: 'test',

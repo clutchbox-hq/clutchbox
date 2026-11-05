@@ -5,7 +5,7 @@ import next from 'next';
 
 // An app's production server off Vercel (self-hosted, or `bun run start` locally): Next.js's own request handling,
 // plus the WebSocket upgrades its server drops, which the live-view relay needs. Vercel runs the app with its own
-// runtime and never loads this. The app's server.ts calls it after `next build`, as `node --import tsx server.ts`,
+// runtime and never loads this. The app's server.ts calls it after `next build`, as `node server.ts`,
 // with its directory and its migration. HOST and PORT choose the address; MIGRATE_ON_START=true applies pending
 // migrations first (the migration takes a lock, so replicas starting together are safe); TRUST_PROXY,
 // CLIENT_IP_HEADER, and FORWARDED_SECRET say where the client's address comes from (ClientAddress in

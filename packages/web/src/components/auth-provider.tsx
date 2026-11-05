@@ -6,7 +6,7 @@ import { AuthProvider as BetterAuthUIProvider } from '@better-auth-ui/react';
 import { QueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
-import { authClient } from '../lib/auth-client';
+import { authClient } from '../lib/auth-client.ts';
 
 const emailAndPassword = { enabled: false };
 const localization = { auth: { signIn: 'Sign in', signOut: 'Sign out' } };

@@ -1,4 +1,4 @@
-import type { ComputerView } from './api';
+import type { ComputerView } from './api.ts';
 
 // Display helpers for the computer's state, shared by the sidebar, the overview, and the Computer page.
 

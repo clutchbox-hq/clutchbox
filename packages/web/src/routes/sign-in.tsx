@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { ResumeSignIn, SignIn as SignInView } from '../components/auth/sign-in';
-import { apiData, apiGet, type Me, type PageApi, type SignInMethods } from '../lib/page-api';
+import { ResumeSignIn, SignIn as SignInView } from '../components/auth/sign-in.tsx';
+import { apiData, apiGet, type Me, type PageApi, type SignInMethods } from '../lib/page-api.ts';
 
 export const metadata: Metadata = { title: 'Sign in · Clutchbox', robots: { index: false } };
 // Where signing in may return to instead of the app: an invitation link or a page in the app, by a pattern that can't

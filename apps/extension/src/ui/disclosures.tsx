@@ -1,5 +1,5 @@
-import { serverOrigin } from '../server';
-import { Button } from './components/button';
+import { serverOrigin } from '../server.ts';
+import { Button } from './components/button.tsx';
 
 // What connected agents get, in both disclosures.
 const agentsUse = (what: string) => `Agents you connect can then use ${what} as you.`;

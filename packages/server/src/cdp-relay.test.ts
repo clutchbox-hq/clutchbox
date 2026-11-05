@@ -1,8 +1,8 @@
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import { CDP_CLOSE, type CdpAccess, type CdpRelayLog, type CdpRelayOptions, cdpRelay } from './cdp-relay';
-import { CDP_ACCESS_RECHECK_MS, CDP_CLOSE_MARGIN_MS } from './computer-timing';
+import { CDP_CLOSE, type CdpAccess, type CdpRelayLog, type CdpRelayOptions, cdpRelay } from './cdp-relay.ts';
+import { CDP_ACCESS_RECHECK_MS, CDP_CLOSE_MARGIN_MS } from './computer-timing.ts';
 
 // Real sockets on 127.0.0.1: a stand-in for the fork's Chrome, the relay's server, and a developer's CDP client.
 

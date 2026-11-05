@@ -9,22 +9,22 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createAuth } from '../../server/src/auth';
-import { LIVE_VIEW_TICKET_MS } from '../../server/src/computer-timing';
-import type { ComputerProvider } from '../../server/src/computers';
-import { openComputerSession, takeOverComputer } from '../../server/src/computers';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { heartbeat } from '../../server/src/heartbeat';
-import { noMetering } from '../../server/src/hooks';
-import { readLiveViewTicket, signLiveViewTicket } from '../../server/src/live-view-ticket';
-import { inTheOrganization } from '../../server/src/member-fixtures';
-import { currentMember } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
-import { liveViewHandler } from './live-view';
-import { nodeServer } from './node-upgrade';
+import { createAuth } from '../../server/src/auth.ts';
+import { LIVE_VIEW_TICKET_MS } from '../../server/src/computer-timing.ts';
+import type { ComputerProvider } from '../../server/src/computers.ts';
+import { openComputerSession, takeOverComputer } from '../../server/src/computers.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { heartbeat } from '../../server/src/heartbeat.ts';
+import { noMetering } from '../../server/src/hooks.ts';
+import { readLiveViewTicket, signLiveViewTicket } from '../../server/src/live-view-ticket.ts';
+import { inTheOrganization } from '../../server/src/member-fixtures.ts';
+import { currentMember } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
+import { liveViewHandler } from './live-view.ts';
+import { nodeServer } from './node-upgrade.ts';
 
 // The live-view relay route, in process: every refusal before the upgrade, against PGlite and real Better Auth, and
 // connections end to end through Vercel's upgrade and the Node server's, with a WebSocket server standing in for the

@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { type RouteEntry, routeManifest } from '../src/route-manifest';
+import { type RouteEntry, routeManifest } from '../src/route-manifest.ts';
 
 // Writes an app's product route files from the route manifest (src/route-manifest.ts), or with --check, fails when
 // they differ from it. Each file imports its module by package name and the deployment's wiring by the app's own '@/'

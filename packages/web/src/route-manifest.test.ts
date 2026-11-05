@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { LIVE_VIEW_MAX_DURATION_MS, ROUTE_MAX_DURATION_MS } from '@clutchbox/server/computer-timing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkApp, parseGroups, routeFiles, writeApp } from '../scripts/generate-routes';
-import { routeManifest } from './route-manifest';
+import { checkApp, parseGroups, routeFiles, writeApp } from '../scripts/generate-routes.ts';
+import { routeManifest } from './route-manifest.ts';
 
 describe('route manifest', () => {
   it('writes the computer timings into the route files as whole-second literals', () => {

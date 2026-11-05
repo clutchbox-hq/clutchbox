@@ -4,11 +4,11 @@ import { Alert, AlertDescription } from '@clutchbox/ui/components/alert';
 import { Button } from '@clutchbox/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
 import { LogOut } from 'lucide-react';
-import { AppPage, useAppUser } from './app-shell';
-import { SignInMethods } from './auth/sign-in-methods';
-import { useAppSignOut } from './auth/user-button';
-import { UserView } from './auth/user-view';
-import { DeleteEverything } from './delete-everything';
+import { AppPage, useAppUser } from './app-shell.tsx';
+import { SignInMethods } from './auth/sign-in-methods.tsx';
+import { useAppSignOut } from './auth/user-button.tsx';
+import { UserView } from './auth/user-view.tsx';
+import { DeleteEverything } from './delete-everything.tsx';
 
 // The Settings page: who is signed in, sign-out, sign-in methods, and Delete everything. `error` is why connecting a
 // sign-in method failed, from Better Auth.

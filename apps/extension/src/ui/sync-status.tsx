@@ -1,6 +1,6 @@
 import type { StatusResponse, SyncStatus as Sync } from '@clutchbox/capture';
 import type { ReactNode } from 'react';
-import { Button, buttonVariants } from './components/button';
+import { Button, buttonVariants } from './components/button.tsx';
 
 export const hint = 'text-[13px] leading-relaxed text-muted-foreground';
 const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : 'unknown time');

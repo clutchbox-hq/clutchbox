@@ -8,7 +8,7 @@ import {
   pastedContent,
   XK_CONTROL_L,
   XK_SHIFT_L,
-} from './live-view-input';
+} from './live-view-input.ts';
 
 const key = (key: string, mods: Partial<KeyEventLike> = {}): KeyEventLike => ({
   key,

@@ -8,19 +8,19 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
-import { ClutchboxError, createClient } from '../../sdk/src/index';
-import { createAuth } from '../../server/src/auth';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { noMetering } from '../../server/src/hooks';
-import { membership } from '../../server/src/member-fixtures';
-import type { Role } from '../../server/src/members';
-import { createOrganization } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { cdpHandler } from './cdp';
-import { createApi } from './index';
-import { nodeServer } from './node-upgrade';
+import { ClutchboxError, createClient } from '../../sdk/src/index.ts';
+import { createAuth } from '../../server/src/auth.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { noMetering } from '../../server/src/hooks.ts';
+import { membership } from '../../server/src/member-fixtures.ts';
+import type { Role } from '../../server/src/members.ts';
+import { createOrganization } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { cdpHandler } from './cdp.ts';
+import { createApi } from './index.ts';
+import { nodeServer } from './node-upgrade.ts';
 
 // The developer REST API and the CDP proxy on the web app's Node server, in process against PGlite and real Better
 // Auth, for tests that call them the way developers do: through the SDK, over real HTTP and WebSockets. A fake provider

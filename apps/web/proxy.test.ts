@@ -1,6 +1,6 @@
 import { productMatcher } from '@clutchbox/web/proxy';
 import { expect, it } from 'vitest';
-import { config } from './proxy';
+import { config } from './proxy.ts';
 
 // Next.js reads the matcher only as the literal in proxy.ts, so it can drift from the product's: a page it misses
 // skips the canonical-origin redirect, the moved pages, or the routing of /.

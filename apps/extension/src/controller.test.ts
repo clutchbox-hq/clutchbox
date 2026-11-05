@@ -23,7 +23,7 @@ import {
   syncKey,
   tokensKey,
   trustedSender,
-} from './controller';
+} from './controller.ts';
 
 const origin = 'https://server.test';
 const issuer = `${origin}/api/auth`;

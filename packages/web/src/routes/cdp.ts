@@ -1,5 +1,5 @@
 import { cdpHandler } from '@clutchbox/api/cdp';
-import { type GetServices, unavailable } from '../services';
+import { type GetServices, unavailable } from '../services.ts';
 
 // /api/v1/cdp: its own route, not the API's, for its own maxDuration, CDP_MAX_DURATION_MS
 // (@clutchbox/server/computer-timing), which the route manifest gives its route file. The connection lasts until

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyCookies, type CdpCookie, type CdpSend, cookieParamOf, partitionCookies } from './chrome';
-import type { CdpCookieParam } from './cookies';
+import { applyCookies, type CdpCookie, type CdpSend, cookieParamOf, partitionCookies } from './chrome.ts';
+import type { CdpCookieParam } from './cookies.ts';
 
 const held = (overrides: Partial<CdpCookie> = {}): CdpCookie => ({
   name: 'sid',

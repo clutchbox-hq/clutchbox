@@ -7,10 +7,10 @@ import { Input } from '@clutchbox/ui/components/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@clutchbox/ui/components/tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleCheck } from 'lucide-react';
-import { ApiError, api, type Grant, grantsQuery, setupQuery } from '../lib/api';
-import { agents } from './agent-steps';
-import { AppPage } from './app-shell';
-import { CopyButton } from './copy-button';
+import { ApiError, api, type Grant, grantsQuery, setupQuery } from '../lib/api.ts';
+import { agents } from './agent-steps.tsx';
+import { AppPage } from './app-shell.tsx';
+import { CopyButton } from './copy-button.tsx';
 
 // A known agent's name, as its tab here shows it (the live view names a waiting agent with it).
 export const agentName = (kind: AgentKind) => agents.find(agent => agent.kind === kind)?.name ?? 'Agent';

@@ -30,8 +30,8 @@ import { Spinner } from '@clutchbox/ui/components/spinner';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppWindow, Check, ChevronsUpDown, Ellipsis, Link as LinkIcon, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { authClient as appAuthClient } from '../lib/auth-client';
-import { UserAvatar } from './auth/user-avatar';
+import { authClient as appAuthClient } from '../lib/auth-client.ts';
+import { UserAvatar } from './auth/user-avatar.tsx';
 
 type OAuthConsentProps = {
   /** Complete signed query, verified by the server before rendering this view. */

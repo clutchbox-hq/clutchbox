@@ -45,11 +45,12 @@ export async function applyCapture(context: BrowserContext, capture: Capture, pr
 // not_found (no such member in the key's organization), no_capture (the member hasn't synced yet).
 export type ServerOptions = { server: string; apiKey: string; fetch?: typeof fetch };
 export class CaptureRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-  ) {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string) {
     super(`Clutchbox answered ${status} ${code}`);
+    this.status = status;
+    this.code = code;
   }
 }
 async function get(options: ServerOptions, path: string) {

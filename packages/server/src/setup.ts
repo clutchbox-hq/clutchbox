@@ -1,11 +1,11 @@
 import 'server-only';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { captureScope } from './captures';
-import type { Database } from './database';
-import { logError, logSetupEvent } from './log';
-import { earliestLiveConsentAt, hasLiveGrant } from './mcp';
-import type { Member } from './organizations';
-import * as schema from './schema';
+import { captureScope } from './captures.ts';
+import type { Database } from './database.ts';
+import { logError, logSetupEvent } from './log.ts';
+import { earliestLiveConsentAt, hasLiveGrant } from './mcp.ts';
+import type { Member } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Setup: the overview's checklist, one per member. Browser sync and Agents are read from
 // current state; "set up" is recorded when an agent first opens the main computer. Every write

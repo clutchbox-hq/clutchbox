@@ -1,4 +1,4 @@
-import type { CapturedCookie } from './index';
+import type { CapturedCookie } from './index.ts';
 
 // Shared by the extension (skip unchanged uploads), the server (authoritative
 // change detection), and sync apply (per-site precedence). Keep them in step.

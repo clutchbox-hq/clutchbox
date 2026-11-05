@@ -2,16 +2,16 @@ import { type ClientAddress, clientAddressFromEnv, listenUntilStopped, nodeServe
 import { SHUTDOWN_GRACE_MS } from '@clutchbox/server/computer-timing';
 import { getRequestListener } from '@hono/node-server';
 import { securityHeaders } from '../next-config.mjs';
-import { type RouteEntry, routeManifest } from './route-manifest';
-import * as api from './routes/api';
-import * as auth from './routes/auth';
-import * as cdp from './routes/cdp';
-import * as extensionClient from './routes/extension-client';
-import * as health from './routes/health';
-import * as liveView from './routes/live-view';
-import * as mcp from './routes/mcp';
-import * as wellKnown from './routes/well-known';
-import type { GetServices } from './services';
+import { type RouteEntry, routeManifest } from './route-manifest.ts';
+import * as api from './routes/api.ts';
+import * as auth from './routes/auth.ts';
+import * as cdp from './routes/cdp.ts';
+import * as extensionClient from './routes/extension-client.ts';
+import * as health from './routes/health.ts';
+import * as liveView from './routes/live-view.ts';
+import * as mcp from './routes/mcp.ts';
+import * as wellKnown from './routes/well-known.ts';
+import type { GetServices } from './services.ts';
 
 // The API's own server, apart from the web app and without Next.js: the route manifest's route files for the API,
 // sign-in (Better Auth), MCP, both relays, the auth server's discovery documents, and the extension's OAuth client,
@@ -118,7 +118,7 @@ export function apiServer(getServices: GetServices, clientAddress: ClientAddress
   return nodeServer(getRequestListener(apiHandler(getServices), { overrideGlobalObjects: false }), clientAddress);
 }
 
-// An app's API server, as its api.ts runs it: `node --conditions=react-server --import tsx api.ts`, with its
+// An app's API server, as its api.ts runs it: `node --conditions=react-server api.ts`, with its
 // services and its migration. HOST, PORT, MIGRATE_ON_START, and the client address (TRUST_PROXY, CLIENT_IP_HEADER,
 // FORWARDED_SECRET) work as for the whole app's server (node-server.ts), and it stops the same way.
 export async function startApiServer({

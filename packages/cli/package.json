@@ -1,6 +1,6 @@
 {
   "name": "clutchbox",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Connect Claude Code and Codex to Clutchbox, so your agents work in a browser that's already signed in as you.",
   "keywords": [
     "mcp",

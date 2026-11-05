@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { LIVE_VIEW_TICKET_MS } from './computer-timing';
+import { LIVE_VIEW_TICKET_MS } from './computer-timing.ts';
 
 // A live-view ticket: how the page opens the relay where its session cookie can't go, at the API's own origin
 // (config.ts, apiOrigin), since the cookie is set only for the web app's host. The API signs one for the signed-in

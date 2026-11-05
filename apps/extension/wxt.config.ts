@@ -1,7 +1,7 @@
 import { browserOrigins, serverOrigins } from '@clutchbox/capture';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'wxt';
-import { serverOriginOf } from './src/origin';
+import { serverOriginOf } from './src/origin.ts';
 
 const server = serverOriginOf(process.env.WXT_SERVER_ORIGIN);
 

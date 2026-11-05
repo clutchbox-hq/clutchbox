@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
-import { migrationTarget, reportMigrationFailure, runMigrations } from './migrator';
-import { singleOrganization } from './organizations';
+import { migrationTarget, reportMigrationFailure, runMigrations } from './migrator.ts';
+import { singleOrganization } from './organizations.ts';
 
 // Applies pending migrations to the database the environment names, for a deployment that serves one organization. True when it applied; on failure it has said why,
 // without credentials. The web app's Node server runs it with MIGRATE_ON_START=true, and so does
-// `node --import tsx packages/server/src/migrate.ts`.
+// `node packages/server/src/migrate.ts`.
 export async function migrate(): Promise<boolean> {
   const target = migrationTarget();
   if ('error' in target) {

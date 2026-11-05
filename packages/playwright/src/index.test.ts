@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { Capture, CapturedCookie } from '@clutchbox/capture';
 import { type Browser, chromium } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyCapture } from './index';
+import { applyCapture } from './index.ts';
 
 // Synthetic cookies only; no real browser data.
 const cookie = (overrides: Partial<CapturedCookie> = {}): CapturedCookie => ({

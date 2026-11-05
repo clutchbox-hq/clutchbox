@@ -1,12 +1,12 @@
 import 'server-only';
 import { and, asc, eq, max } from 'drizzle-orm';
-import type { Auth } from './auth';
-import { listProfiles, loadLatestCapture } from './captures';
-import { type Caller, type ComputerFailure, SESSION_ID_PATTERN } from './computers';
-import type { Database } from './database';
-import { logError } from './log';
-import { API_KEY_PREFIX } from './organization-auth';
-import * as schema from './schema';
+import type { Auth } from './auth.ts';
+import { listProfiles, loadLatestCapture } from './captures.ts';
+import { type Caller, type ComputerFailure, SESSION_ID_PATTERN } from './computers.ts';
+import type { Database } from './database.ts';
+import { logError } from './log.ts';
+import { API_KEY_PREFIX } from './organization-auth.ts';
+import * as schema from './schema.ts';
 
 // Organization API keys: what a developer's server presents to read the organization's members' synced state over
 // REST. They are Better Auth's api-key plugin's (organization-auth.ts), which owners and admins create, list, and

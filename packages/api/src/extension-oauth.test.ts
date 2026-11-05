@@ -16,19 +16,19 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '../../server/src/auth';
-import { CHROME_ON_MAC, connectBrowser, EDGE_ON_WINDOWS, type Tokens } from '../../server/src/browser-fixtures';
-import { ensureExtensionClient } from '../../server/src/browsers';
-import { bundle, cookie } from '../../server/src/capture-fixtures';
-import type { ServerConfig } from '../../server/src/config';
-import type { Database } from '../../server/src/database';
-import { fakeComputerProvider } from '../../server/src/fake-computer-provider';
-import { consentMembership } from '../../server/src/mcp';
-import { inTheOrganization, switchTo } from '../../server/src/member-fixtures';
-import { createOrganization } from '../../server/src/organizations';
-import * as schema from '../../server/src/schema';
-import { createApi } from './index';
-import { extensionCors, tokenPreflight } from './origins';
+import { createAuth } from '../../server/src/auth.ts';
+import { CHROME_ON_MAC, connectBrowser, EDGE_ON_WINDOWS, type Tokens } from '../../server/src/browser-fixtures.ts';
+import { ensureExtensionClient } from '../../server/src/browsers.ts';
+import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
+import type { ServerConfig } from '../../server/src/config.ts';
+import type { Database } from '../../server/src/database.ts';
+import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
+import { consentMembership } from '../../server/src/mcp.ts';
+import { inTheOrganization, switchTo } from '../../server/src/member-fixtures.ts';
+import { createOrganization } from '../../server/src/organizations.ts';
+import * as schema from '../../server/src/schema.ts';
+import { createApi } from './index.ts';
+import { extensionCors, tokenPreflight } from './origins.ts';
 
 // The extension's OAuth connection over HTTP: CORS, bearer auth on its routes only, the origin guard, and
 // the account page's Browsers routes. The token and family rules are tested in packages/server/src/browsers.test.ts.

@@ -1,12 +1,12 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
-import type { Database } from './database';
-import { type Limits, noLimits } from './hooks';
-import { newPublicId, publicIdPattern } from './ids';
-import { join, manages, memberLimitFailure, roleOf } from './members';
-import { actIn, type Member, type Person } from './organizations';
-import * as schema from './schema';
+import type { Database } from './database.ts';
+import { type Limits, noLimits } from './hooks.ts';
+import { newPublicId, publicIdPattern } from './ids.ts';
+import { join, manages, memberLimitFailure, roleOf } from './members.ts';
+import { actIn, type Member, type Person } from './organizations.ts';
+import * as schema from './schema.ts';
 
 // Connect: a "Sign in with…" flow on this server for an organization's own apps. The app is an OAuth client the
 // organization registers here; it sends a person to /oauth2/authorize with the connect scope, they sign in or sign up,

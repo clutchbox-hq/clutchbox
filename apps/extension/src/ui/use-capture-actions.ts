@@ -10,9 +10,9 @@ import {
 } from '@clutchbox/capture';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { pendingKey, pendingTtlMs } from '../controller';
-import { serverOrigin } from '../server';
-import { send } from './send';
+import { pendingKey, pendingTtlMs } from '../controller.ts';
+import { serverOrigin } from '../server.ts';
+import { send } from './send.ts';
 
 export const statusKey = ['status'];
 const checkKey = ['check'];

@@ -1,6 +1,6 @@
 'use client';
 // Better Auth UI v1.7.30 UserView. MIT license: LICENSE.
-import { UserAvatar, type UserIdentity } from './user-avatar';
+import { UserAvatar, type UserIdentity } from './user-avatar.tsx';
 
 export function UserView({ user, hideSubtitle = false }: { user: UserIdentity; hideSubtitle?: boolean }) {
   return (
