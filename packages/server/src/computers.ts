@@ -39,6 +39,8 @@ import {
   HOLD_LAPSE_MS,
   IDLE_PAUSE_MS,
   LANGUAGES_BUDGET_MS,
+  OPEN_RETRY_MS,
+  OPEN_RETRY_POLL_MS,
   PLATFORM_BUDGET_MS,
   PROFILE_SWITCH_BUDGET_MS,
   REFRESH_BUDGET_MS,
@@ -635,7 +637,8 @@ const profileNotFound: ComputerFailure = {
 // `profile` names a profile by its browser's public ID; without it, the fork keeps the profile its last session used
 // (pickProfile). `screen` switches the fork's screen; without it, the fork keeps its own, and a new one starts at the
 // member's choice (memberships.computerScreen). A session holding control of the fork means `busy`, unless it is the caller's own live sessionId,
-// which this replaces. Callers must already have verified the live MCP grant and pass a guard that re-checks it.
+// which this replaces. With joinRetries, a new-computer open that repeats one the caller just began is that open's
+// retry (retriedOpen). Callers must already have verified the live MCP grant and pass a guard that re-checks it.
 export async function openComputerSession(
   db: Database,
   deployment: Computers,
@@ -646,12 +649,14 @@ export async function openComputerSession(
     label,
     profile,
     screen,
+    joinRetries = false,
   }: {
     sessionId?: string | undefined;
     computerId?: string | undefined;
     label?: string | undefined;
     profile?: string | undefined;
     screen?: ScreenSize | undefined;
+    joinRetries?: boolean;
   } = {},
 ): Promise<OpenedSession | ComputerFailure> {
   const deadline = Date.now() + SYNC_DEADLINE_MS;
@@ -662,9 +667,15 @@ export async function openComputerSession(
   const choice = { named: profiles.find(each => each.id === profile), profiles };
   if (profile !== undefined && !choice.named) return profileNotFound;
   const fork = computerId ?? (sessionId ? await forkOfSession(db, caller, sessionId) : null);
+  const retried = !fork && joinRetries && label ? await retriedOpen(db, caller, label, deadline) : null;
   const started = fork
     ? await reopenFork(db, computers, caller, fork, sessionId, choice)
-    : await createFork(db, computers, caller, label, choice);
+    : retried
+      ? // The agent never saw the first open's result, so to it this is still a new computer.
+        await reopenFork(db, computers, caller, retried.computerId, retried.sessionId, choice).then(reopened =>
+          'error' in reopened ? reopened : { ...reopened, created: true },
+        )
+      : await createFork(db, computers, caller, label, choice);
   if ('error' in started) return started;
   const { computer } = started;
   const call = { id: started.callId, sessionId: started.id, computerId: computer.id, member: caller };
@@ -721,6 +732,52 @@ async function forkOfSession(db: Database, caller: Caller, sessionId: string) {
     .innerJoin(schema.computers, eq(schema.computers.id, schema.computerSessions.computerId))
     .where(and(eq(schema.computerSessions.publicId, sessionId), ownedBy(caller), isNotNull(schema.computers.forkOf)));
   return row?.publicId ?? null;
+}
+
+// The open a new-computer open retries, once that open has ended: the fork the caller's agent made less than
+// OPEN_RETRY_MS ago with the same label, and its first session, still live, so the agent can't have used it yet. An MCP
+// client may re-send a tool call whose connection closed mid-call as a new request, which a stateless endpoint can't
+// tell from a new call, while the first open runs on; joining it replaces the session whose result nobody received,
+// instead of making a second computer. Waits for the first open's call to end, so the two never apply to one computer
+// at once, or until the deadline. Null with no such open, or once the first's failed create deleted its fork.
+async function retriedOpen(db: Database, caller: Caller, label: string, deadline: number) {
+  const [first] = await db
+    .select({
+      id: schema.computers.id,
+      computerId: schema.computers.publicId,
+      session: schema.computerSessions.id,
+      sessionId: schema.computerSessions.publicId,
+    })
+    .from(schema.computers)
+    .innerJoin(schema.computerSessions, eq(schema.computerSessions.computerId, schema.computers.id))
+    .where(
+      and(
+        eq(schema.computers.membershipId, caller.membershipId),
+        isNotNull(schema.computers.forkOf),
+        eq(schema.computers.label, label),
+        gt(schema.computers.createdAt, new Date(Date.now() - OPEN_RETRY_MS)),
+        // The session createFork started with the fork, at the same instant.
+        eq(schema.computerSessions.createdAt, schema.computers.createdAt),
+        isNull(schema.computerSessions.endedAt),
+        ownedBy(caller),
+      ),
+    )
+    .orderBy(desc(schema.computers.id))
+    .limit(1);
+  if (!first) return null;
+  while (Date.now() < deadline) {
+    const [fork] = await db
+      .select({ status: schema.computers.status, callsInFlight: schema.computers.callsInFlight })
+      .from(schema.computers)
+      .where(eq(schema.computers.id, first.id));
+    if (!fork) return null;
+    const opening =
+      fork.status === 'creating' ||
+      liveCalls(fork.callsInFlight, new Date()).some(([, call]) => call.sessionId === first.session);
+    if (!opening) break;
+    await new Promise(resolve => setTimeout(resolve, OPEN_RETRY_POLL_MS));
+  }
+  return first;
 }
 
 // Starts the caller's computer session on a ready computer, on its profile (pickProfile), under the computer's row lock:

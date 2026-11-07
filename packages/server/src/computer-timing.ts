@@ -30,6 +30,18 @@ export const SESSION_IDLE_END_MS = 10 * 60_000;
 // adapter's ENSURE_CHROME_MS, or a fork's create from a snapshot, measured at up to 32 s from a heavily used main.
 export const CREATE_STALE_MS = 3 * 60_000;
 
+// --- Retried opens (computers.ts, retriedOpen) ---
+
+// A new-computer open from an MCP agent that repeats one it began this recently, with the same label, is that open's
+// retry and joins its computer. Claude Code re-sends a tool call whose connection closed mid-call as a new request,
+// after re-initializing: measured 0.9 s and 3.1 s after the first. Ten seconds leaves room for a slow re-initialize
+// while staying far shorter than an agent takes to read a result and decide to open another computer for the same task.
+export const OPEN_RETRY_MS = 10_000;
+
+// How often the retry checks whether the first open has ended. A judgment call: one small query each time, and the
+// open it waits on takes 7-30 s.
+export const OPEN_RETRY_POLL_MS = 500;
+
 // --- Forks (computers.ts, Forks) ---
 
 // A fork unused this long (no open or call) is deleted. Long enough for an agent, or another conversation of the

@@ -309,6 +309,8 @@ function registerComputerTools(
           label,
           profile,
           screen,
+          // A client may re-send this call as a new request when its connection drops (computers.ts, retriedOpen).
+          joinRetries: true,
         });
         if ('error' in opened) return failure(opened);
         handle = opened;

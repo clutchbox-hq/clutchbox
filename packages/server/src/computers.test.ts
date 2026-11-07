@@ -546,6 +546,75 @@ describe('forks', () => {
     expect(other.computer).toMatchObject({ created: true });
     expect(await sessionRow(second.sessionId)).toMatchObject({ endedAt: null });
   });
+  it("joins an MCP client's retry of a new-computer open to the first open, once it ends, instead of making another", async () => {
+    const a = await user('a');
+    await saveFromBrowser(db, a, bundle([cookie()]));
+    // The provider's create takes seconds, so the client's retry arrives while the first open runs.
+    let release!: () => void;
+    const held = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const create = fake.provider.createFromSnapshot;
+    vi.spyOn(fake.provider, 'createFromSnapshot').mockImplementationOnce(async (...args) => {
+      await held;
+      return create(...args);
+    });
+    const options = { label: 'Order history', joinRetries: true };
+    const first = openComputerSession(db, computers, caller(a, 'claude'), options);
+    await vi.waitFor(async () => expect(await forks()).toHaveLength(1));
+    let joinedYet = false;
+    const second = openComputerSession(db, computers, caller(a, 'claude'), options).finally(() => {
+      joinedYet = true;
+    });
+    release();
+    const lost = await first;
+    if ('error' in lost) throw new Error(lost.error);
+    // The retry waits for the first open's call to end, so the two never apply to the computer at once.
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    expect(joinedYet).toBe(false);
+    await lost.done();
+    const joined = await second;
+    if ('error' in joined) throw new Error(joined.error);
+    await joined.done();
+    expect(joined.computer).toMatchObject({ id: lost.computer.id, label: 'Order history', created: true });
+    expect(fake.calls.fork).toBe(1);
+    expect(await sessionRow(lost.sessionId)).toMatchObject({ endReason: 'replaced' });
+    expect(await use(a, joined.sessionId, 'claude')).not.toHaveProperty('error');
+    expect((await sandboxOf(joined.computer.id)).cookies.map(entry => entry.name)).toEqual(['sid']);
+  });
+  it('opens a new computer for an open that only resembles a retry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    at('2026-10-20T12:00:00Z');
+    const a = await user('a');
+    const label = 'Order history';
+    const openNew = async (clientId: string, options: { label?: string; joinRetries?: boolean }) => {
+      const opened = await openComputerSession(db, computers, caller(a, clientId), options);
+      if ('error' in opened) throw new Error(opened.error);
+      await opened.done();
+      expect(opened.computer.created).toBe(true);
+      return opened;
+    };
+    const ids = [(await openNew('claude', { label, joinRetries: true })).computer.id];
+    at('2026-10-20T12:00:02Z');
+    // Another agent, another label, no label, or a caller that doesn't join retries (the REST API).
+    for (const [clientId, options] of [
+      ['chatgpt', { label, joinRetries: true }],
+      ['claude', { label: 'Invoices', joinRetries: true }],
+      ['claude', { joinRetries: true }],
+      ['claude', { label }],
+    ] as const)
+      ids.push((await openNew(clientId, options)).computer.id);
+    // Later than a retry comes.
+    at('2026-10-20T12:00:13Z');
+    const later = await openNew('claude', { label, joinRetries: true });
+    ids.push(later.computer.id);
+    // A first session the agent has already closed: it got that result.
+    await closeComputerSession(db, computers, caller(a, 'claude'), later.sessionId);
+    at('2026-10-20T12:00:14Z');
+    ids.push((await openNew('claude', { label, joinRetries: true })).computer.id);
+    expect(new Set(ids).size).toBe(7);
+    expect(fake.calls.fork).toBe(7);
+  });
   it('never lets an agent control the main computer', async () => {
     const a = await user('a');
     await open(a);
