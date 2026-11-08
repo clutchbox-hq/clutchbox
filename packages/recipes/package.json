@@ -1,0 +1,34 @@
+{
+  "name": "@clutchbox/recipes",
+  "version": "0.1.0",
+  "description": "Recipes for AI agents on a computer signed in as you, and which sites keep a synced sign-in, from the repository's recipes/ and sites/.",
+  "keywords": [
+    "ai-agents",
+    "recipes",
+    "prompts",
+    "browser-automation"
+  ],
+  "homepage": "https://www.clutchbox.dev",
+  "bugs": "https://github.com/clutchbox-hq/clutchbox/issues",
+  "author": "Clutchbox",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clutchbox-hq/clutchbox.git",
+    "directory": "packages/recipes"
+  },
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
+  }
+}

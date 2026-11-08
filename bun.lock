@@ -155,6 +155,16 @@
         "playwright-core": ">=1.40",
       },
     },
+    "packages/recipes": {
+      "name": "@clutchbox/recipes",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@types/node": "24.19.2",
+      },
+    },
     "packages/runtime-boat": {
       "name": "@clutchbox/runtime-boat",
       "version": "0.1.0",
@@ -282,6 +292,7 @@
         "@clutchbox/api": "workspace:*",
         "@clutchbox/capture": "workspace:*",
         "@clutchbox/computer": "workspace:*",
+        "@clutchbox/recipes": "workspace:*",
         "@clutchbox/server": "workspace:*",
         "@clutchbox/ui": "workspace:*",
         "@hono/node-server": "2.1.5",
@@ -407,6 +418,8 @@
     "@clutchbox/extension": ["@clutchbox/extension@workspace:apps/extension"],
 
     "@clutchbox/playwright": ["@clutchbox/playwright@workspace:packages/playwright"],
+
+    "@clutchbox/recipes": ["@clutchbox/recipes@workspace:packages/recipes"],
 
     "@clutchbox/runtime-boat": ["@clutchbox/runtime-boat@workspace:packages/runtime-boat"],
 

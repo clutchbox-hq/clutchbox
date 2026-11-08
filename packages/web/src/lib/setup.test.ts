@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSupportedBrowser } from './setup.ts';
+import { isSupportedBrowser, missingSites } from './setup.ts';
 
 const mac =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -52,5 +52,21 @@ describe('isSupportedBrowser', () => {
       ),
     ).toBe(false);
     expect(isSupportedBrowser('Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0')).toBe(false);
+  });
+});
+
+describe('missingSites', () => {
+  const synced = (sites: string[], mode: string | null = 'sites') => ({ mode, sites, readable: true });
+  it('lists the sites not added, counting a parent domain as added', () => {
+    expect(missingSites(['x.com', 'linkedin.com'], synced(['x.com', 'twitter.com']))).toEqual(['linkedin.com']);
+    expect(missingSites(['mail.google.com'], synced(['google.com']))).toEqual([]);
+    expect(missingSites(['google.com'], synced(['mail.google.com']))).toEqual(['google.com']);
+    expect(missingSites(['notx.com'], synced(['x.com']))).toEqual(['notx.com']);
+    expect(missingSites(['x.com'], synced([], null))).toEqual(['x.com']);
+  });
+
+  it('needs nothing with whole-browser sync, and is unknown when the sites are unreadable', () => {
+    expect(missingSites(['x.com'], synced([], 'whole-browser'))).toEqual([]);
+    expect(missingSites(['x.com'], { mode: null, sites: [], readable: false })).toBeNull();
   });
 });

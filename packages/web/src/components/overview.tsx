@@ -26,6 +26,7 @@ import { promptsFor } from '../lib/setup.ts';
 import { connectedAgents, lastUser } from './agent-connections.tsx';
 import { AppPage, useAppUser } from './app-shell.tsx';
 import { CopyButton } from './copy-button.tsx';
+import { hasRecipes, RecipeGallery } from './recipe-gallery.tsx';
 import { SetupNotice } from './setup-notice.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -56,7 +57,7 @@ export function Overview({ mcpUrl }: { mcpUrl: string }) {
     return <AppPage title={`Welcome, ${first}.`}>{<p className="text-foreground">Loading…</p>}</AppPage>;
   // If setup cannot load, the status view shows plainly.
   if (setup.data && !setup.data.setUpAt) return <Checklist setup={setup.data} first={first} mcpUrl={mcpUrl} />;
-  return <Status setup={setup.data} first={first} />;
+  return <Status setup={setup.data} first={first} mcpUrl={mcpUrl} />;
 }
 
 function Checklist({ setup, first, mcpUrl }: { setup: SetupView; first: string | undefined; mcpUrl: string }) {
@@ -147,14 +148,25 @@ function Checklist({ setup, first, mcpUrl }: { setup: SetupView; first: string |
         </Step>
         <Step
           number={3}
-          title="Let an agent open your computer"
+          title={hasRecipes ? 'Run your first recipe' : 'Let an agent open your computer'}
           done={items.computer}
           current={current === 2}
           summary={used ? `Opened by ${used.name}, ${when(used.at)}` : 'Opened'}
           href="/app/computer"
         >
-          <p className="text-foreground">Ask a connected agent:</p>
-          <RotatingPrompt prompts={promptsFor(sync)} />
+          {hasRecipes ? (
+            <>
+              <p className="text-foreground">
+                Copy a recipe’s prompt into a connected agent. It opens your computer, already signed in.
+              </p>
+              <RecipeGallery sync={sync} mcpUrl={mcpUrl} />
+            </>
+          ) : (
+            <>
+              <p className="text-foreground">Ask a connected agent:</p>
+              <RotatingPrompt prompts={promptsFor(sync)} />
+            </>
+          )}
         </Step>
       </ol>
       <p className="text-sm text-muted-foreground">Setup never locks anything. Every page is in the menu.</p>
@@ -225,7 +237,7 @@ function More({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-function Status({ setup, first }: { setup: SetupView | undefined; first: string | undefined }) {
+function Status({ setup, first, mcpUrl }: { setup: SetupView | undefined; first: string | undefined; mcpUrl: string }) {
   const { data: view } = useQuery(computerQuery);
   const { data: grants = [] } = useQuery(grantsQuery);
   const { data: syncView } = useQuery(syncQuery);
@@ -252,17 +264,29 @@ function Status({ setup, first }: { setup: SetupView | undefined; first: string 
         </Alert>
       )}
       {view && <ComputerSummary view={view} />}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>
-            <h2>Prompt to try</h2>
-          </CardTitle>
-          <CardDescription>Ask a connected agent:</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RotatingPrompt prompts={prompts} />
-        </CardContent>
-      </Card>
+      {hasRecipes && sync ? (
+        <section className="grid gap-3" aria-labelledby="recipes">
+          <div>
+            <h2 id="recipes" className="font-heading text-xl font-medium">
+              Recipes
+            </h2>
+            <p className="text-sm text-muted-foreground">Ready tasks to hand your agents, on their own schedule.</p>
+          </div>
+          <RecipeGallery sync={sync} mcpUrl={mcpUrl} />
+        </section>
+      ) : (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>
+              <h2>Prompt to try</h2>
+            </CardTitle>
+            <CardDescription>Ask a connected agent:</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RotatingPrompt prompts={prompts} />
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>

@@ -51,3 +51,14 @@ export function isSupportedBrowser(userAgent: string, data?: UserAgentData | nul
     !/\b(SamsungBrowser|Android|Mobile|CrOS)\b/.test(userAgent)
   );
 }
+
+// A recipe's sites that the user doesn't sync yet: none with whole-browser sync, and null when the server can't read
+// what they sync. A site counts as synced when it or a parent domain was added (mail.google.com under google.com).
+export function missingSites(
+  sites: readonly string[],
+  sync: { mode: string | null; sites: string[]; readable: boolean },
+): string[] | null {
+  if (!sync.readable) return null;
+  if (sync.mode === 'whole-browser') return [];
+  return sites.filter(site => !sync.sites.some(added => site === added || site.endsWith(`.${added}`)));
+}

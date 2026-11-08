@@ -39,6 +39,9 @@ jobs:
       # Route files are generated from the product's route manifest, with literal segment config such as maxDuration;
       # fails when one was edited by hand, is stale, or a hand-written route claims a product URL.
       - run: bun run generate-routes --check
+      # The recipe catalog the web apps import is generated from recipes/ and sites/compatibility.json; fails when a
+      # recipe or site result is invalid or the catalog is stale.
+      - run: bun run generate-recipes --check
 
   # The web app's production build, with placeholder configuration: catches what only `next build` sees (route segment
   # config, server-to-client props, CSS). It builds the manual extension zip for the placeholder origin first.

@@ -11,6 +11,7 @@ export const transpilePackages = [
   '@clutchbox/capture',
   '@clutchbox/computer',
   '@clutchbox/e2b',
+  '@clutchbox/recipes',
   '@clutchbox/ui',
   '@clutchbox/web',
 ];

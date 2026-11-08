@@ -40,6 +40,7 @@
     "@clutchbox/api": "workspace:*",
     "@clutchbox/capture": "workspace:*",
     "@clutchbox/computer": "workspace:*",
+    "@clutchbox/recipes": "workspace:*",
     "@clutchbox/server": "workspace:*",
     "@clutchbox/ui": "workspace:*",
     "@better-auth-ui/core": "1.7.30",

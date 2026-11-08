@@ -1,0 +1,342 @@
+{
+  "recipes": [
+    {
+      "title": "Cross-post to X, Threads, and LinkedIn",
+      "summary": "Each evening, your agent takes what you posted today on one network and adapts it for the other two, keeping your words, links, and images. It publishes only what you approve.",
+      "useCase": "social",
+      "sites": [
+        "x.com",
+        "threads.com",
+        "linkedin.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every day at 18:00",
+        "cron": "0 18 * * *"
+      },
+      "slug": "cross-post",
+      "source": "recipes/cross-post.md",
+      "prompt": "Use Clutchbox to cross-post my posts to X, Threads, and LinkedIn.\n\nSettings (change these to suit you):\n- Publish: no. Draft each version for me to approve.\n- What to cross-post: my own posts from the last 24 hours on any of the three networks that aren't on the other two yet. (Or paste a post here, and I'll take it from there.)\n- Networks: X, Threads, LinkedIn.\n\nSteps:\n1. Open a computer. On each network, open my own profile and tell me which account is signed in.\n2. List my posts from the last 24 hours on each network. A post counts as already cross-posted if one with the same opening line is on the other network.\n3. For each post to cross-post, adapt it for each network it's missing from: X up to 280 characters, Threads up to 500, LinkedIn up to 3,000 with a line of context if the post assumes it. Keep my wording, links, and meaning; don't add hashtags, emoji, or claims I didn't make. Replies and reposts aren't posts; skip them.\n4. If the post has images, save them from the original and attach the same ones. If you can't attach them, say so instead of posting without them.\n5. Show me each original and its adapted versions, numbered.\n6. Publish only if the setting above says yes, or I reply with the numbers to publish. Publish each one, then open it and check it appears as written. Don't tag people, like, comment, or follow anyone.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- Never pay, buy, cancel, delete, or accept terms unless this prompt or my reply in this conversation says to.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "Sync your Threads sign-in from threads.com. If you sign in to Threads with Instagram, sync instagram.com too.",
+        "To cross-post right after you post, run the prompt yourself with the post pasted in."
+      ]
+    },
+    {
+      "title": "Draft replies to your X mentions",
+      "summary": "Every weekday morning, your agent reads your X mentions on your computer and drafts a reply to each one worth answering. It posts only the ones you approve.",
+      "useCase": "social",
+      "sites": [
+        "x.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every weekday at 9:00",
+        "cron": "0 9 * * 1-5"
+      },
+      "slug": "reply-to-x-mentions",
+      "source": "recipes/reply-to-x-mentions.md",
+      "prompt": "Use Clutchbox to draft replies to my X mentions.\n\nSettings (change these to suit you):\n- Post the replies: no. Draft them for me to approve.\n- Look back: 24 hours.\n- My voice: short, plain, and specific. No hashtags, no emoji, never salesy.\n\nSteps:\n1. Open a computer and go to https://x.com/notifications/mentions. Tell me which account is signed in.\n2. Read the mentions from the look-back period. Open each one to see the thread it's in.\n3. Skip spam, giveaways, bots, hostile posts, and mentions I've already replied to.\n4. Draft at most 10 replies, each under 280 characters, answering what the person actually said. Don't invent facts about me or my work; if a reply needs one you don't have, say what's missing instead of drafting it.\n5. Show me a numbered list: each mention's author, link, and text, then your draft.\n6. Post only if the setting above says yes, or I reply with the numbers to post. Post each as a reply in its own thread, one at a time, and check that it appears. Don't like, repost, follow, or send messages.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- Never pay, buy, cancel, delete, or accept terms unless this prompt or my reply in this conversation says to.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "Drafts appear in the agent's conversation (or a scheduled run's), so you approve them by replying with the numbers to post.",
+        "X's rules limit automated posting. The recipe drafts by default and posts only what you approve, at most 10 a run."
+      ]
+    },
+    {
+      "title": "Your weekly post stats from X, LinkedIn, and Threads",
+      "summary": "Every Monday, your agent collects the numbers on each of last week's posts from X, LinkedIn, and Threads into one table, and says what your best posts had in common.",
+      "useCase": "social",
+      "sites": [
+        "x.com",
+        "linkedin.com",
+        "threads.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every Monday at 9:00",
+        "cron": "0 9 * * 1"
+      },
+      "slug": "weekly-post-stats",
+      "source": "recipes/weekly-post-stats.md",
+      "prompt": "Use Clutchbox to collect last week's stats for my posts on X, LinkedIn, and Threads.\n\nSettings (change these to suit you):\n- Week: the last 7 days, ending yesterday.\n- Networks: X, LinkedIn, Threads.\n\nSteps:\n1. Open a computer. On each network, open my own profile and tell me which account is signed in.\n2. List my own posts from the week (not replies or reposts). For each, read the numbers the network shows on the post or its analytics page: views or impressions, likes, replies or comments, reposts, and link clicks where shown. Leave a number blank if the site doesn't show it; never estimate one.\n3. Make one table, newest first: network, date, the first 60 characters, link, and the numbers.\n4. Under it, give each network's totals, the three posts with the most views or impressions, and in two or three sentences what those posts have in common.\n5. If you can write files where you run, add the rows to post-stats.csv in your working folder (create it with a header row if it's missing), and compare the totals with last week's rows if they're there.\n\nThis is read-only: don't post, like, reply, follow, or change any setting.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "Claude Code and Codex keep a running post-stats.csv in the folder you schedule them in, so each week compares with the last."
+      ]
+    },
+    {
+      "title": "Download last month's Uber and DoorDash receipts",
+      "summary": "On the 2nd of every month, your agent saves last month's Uber trip and DoorDash order receipts as PDFs in one folder on your computer, with a table of dates and totals for expenses.",
+      "useCase": "paperwork",
+      "sites": [
+        "uber.com",
+        "ubereats.com",
+        "doordash.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "On the 2nd of every month at 9:00",
+        "cron": "0 9 2 * *"
+      },
+      "slug": "ride-and-food-receipts",
+      "source": "recipes/ride-and-food-receipts.md",
+      "prompt": "Use Clutchbox to save last month's Uber and DoorDash receipts.\n\nSettings (change these to suit you):\n- Sites: Uber trips (riders.uber.com), Uber Eats orders, DoorDash orders.\n- Month: last calendar month.\n- Folder: ~/Receipts/<YYYY-MM> on the computer.\n- Only business: no. (Say yes to keep only trips on my Uber business profile.)\n\nSteps:\n1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork, and tell me to pin it in the Clutchbox Dashboard so the folder is kept.\n2. On each site, open my trip or order history and find everything completed in the month. Skip cancelled trips and refunded orders, and list them separately.\n3. Save each receipt as a PDF: use the site's download if it has one, otherwise open the receipt and save it with the browser's Print (Save as PDF). Never ask a site to email or resend a receipt.\n4. With computer_exec, move the files from ~/Downloads into the folder, named \"<date> <site> <amount> <currency>.pdf\", and write summary.csv there with the columns site, date, from or restaurant, amount, tip, currency, and file.\n5. Show me the table, the total per site and currency, and anything you couldn't save. If you can write files where you run, save a copy of summary.csv in your working folder as receipts-<YYYY-MM>.csv.\n\nOnly read and download: don't tip, rate, reorder, or contact support.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, skip it, name it at the end, and follow sign_in_help.\n- If a page shows a bot check, don't try to solve it. Stop and tell me which site.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "The PDFs stay on your pinned Paperwork computer, beside your SaaS invoices if you run that recipe too."
+      ]
+    },
+    {
+      "title": "Download last month's SaaS invoices",
+      "summary": "On the 2nd of every month, your agent goes to each SaaS billing page you use, downloads last month's invoices into one folder on your computer, and lists them with their totals for your bookkeeping.",
+      "useCase": "paperwork",
+      "sites": [
+        "github.com",
+        "notion.so"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "On the 2nd of every month at 9:00",
+        "cron": "0 9 2 * *"
+      },
+      "slug": "saas-invoices",
+      "source": "recipes/saas-invoices.md",
+      "prompt": "Use Clutchbox to download last month's invoices from my SaaS billing pages.\n\nSettings (change these to suit you):\n- Billing pages: GitHub, Notion. (Add the others you pay for, such as Vercel, Linear, Figma, or Slack. Each one must be synced in the Clutchbox extension.)\n- Month: last calendar month.\n- Folder: ~/Invoices/<YYYY-MM> on the computer.\n\nSteps:\n1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork, and tell me to pin it in the Clutchbox Dashboard so the folder is kept.\n2. For each billing page, find the account's billing or invoice history from its settings. If the site has several workspaces or organizations, check each one I pay for.\n3. Download every invoice or receipt dated in the month as a PDF. If one has no download, open it and save it as a PDF with the browser's Print (Save as PDF).\n4. With computer_exec, move the files from ~/Downloads into the folder, named \"<date> <vendor> <amount> <currency>.pdf\", and write summary.csv there with the columns vendor, date, invoice number, amount, currency, and file.\n5. Show me the table, the total per currency, and any billing page with no invoice that month or that you couldn't reach. If you can write files where you run, save a copy of summary.csv in your working folder as invoices-<YYYY-MM>.csv.\n\nOnly read and download: don't pay an invoice, change a plan or payment method, or edit billing details, even if a page asks.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, skip it, name it at the end, and follow sign_in_help.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "The PDFs stay on your pinned Paperwork computer; watch it in live view to check them.",
+        "GitHub asks you to confirm your password before some billing settings. If it does, the agent stops and names the page instead of typing it."
+      ]
+    },
+    {
+      "title": "Reorder your usual groceries on Instacart",
+      "summary": "Every Saturday morning, your agent fills your Instacart cart with your usual order, picks close replacements for anything out of stock, and stops at checkout with the total and delivery times for you to approve.",
+      "useCase": "admin",
+      "sites": [
+        "instacart.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every Saturday at 8:00",
+        "cron": "0 8 * * 6"
+      },
+      "slug": "reorder-groceries",
+      "source": "recipes/reorder-groceries.md",
+      "prompt": "Use Clutchbox to reorder my usual groceries on Instacart.\n\nSettings (change these to suit you):\n- My usual order: the items I've bought in at least two of my last four orders. (Or list them here.)\n- Store: the one I ordered from last.\n- Budget: tell me before checkout if the total is over $150.\n- Place the order: no. Stop at checkout for me to approve.\n\nSteps:\n1. Open a computer and go to https://www.instacart.com. Tell me which account is signed in and the delivery address it shows.\n2. Open my past orders and work out the usual order from the setting above, with the usual quantities.\n3. If the cart already has items, tell me and leave them there.\n4. Add each item at the store. If one is out of stock, pick the closest replacement of the same size and type, at no more than 20% over the usual price, or leave it out; list every change.\n5. Go to checkout, but don't place the order. Show me the items, the replacements, what you left out, the subtotal, fees, tip, total, and the next delivery windows.\n6. Place the order only if the setting above says yes and the total is within budget, or I reply \"place it\". Then choose the delivery window I name, or the earliest one, and show me the confirmation.\n\nDon't change the address, payment method, or tip, and don't add anything I don't usually buy.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- Never pay, buy, cancel, delete, or accept terms unless this prompt or my reply in this conversation says to.\n- If a page shows a bot check, don't try to solve it. Stop and tell me.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "A scheduled run leaves the cart ready at checkout. Reply in that run's conversation, or open Instacart yourself, to place the order."
+      ]
+    },
+    {
+      "title": "Find subscriptions you no longer use",
+      "summary": "Once a month, your agent goes through your email receipts and PayPal automatic payments, lists every subscription with what it costs you a year, and flags the ones that look unused. It cancels only the ones you name.",
+      "useCase": "admin",
+      "sites": [
+        "google.com",
+        "paypal.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "On the 1st of every month at 9:00",
+        "cron": "0 9 1 * *"
+      },
+      "slug": "unused-subscriptions",
+      "source": "recipes/unused-subscriptions.md",
+      "prompt": "Use Clutchbox to find my subscriptions and the ones I may not use.\n\nSettings (change these to suit you):\n- Look back: 13 months, so yearly renewals show up.\n- Where to look: my Gmail, and PayPal's automatic payments.\n- Cancel: nothing. Only list them.\n\nSteps:\n1. Open a computer and go to https://mail.google.com. Tell me which account is signed in.\n2. Search the look-back period for receipts and renewal notices (words like receipt, renewal, subscription, your plan, invoice, trial ending). Read each to get the service, the amount, the currency, how often it charges, the last charge date, and the account email.\n3. Open PayPal (https://www.paypal.com), then its automatic payments, and add the merchants there.\n4. Make one table, most expensive per year first: service, amount, how often, yearly cost, last charge, where you found it, and a \"looks unused\" flag with the reason. Flag a service when it has sent nothing but bills for 3 months, when it overlaps another (two music services), when a trial turned paid, or when its price went up.\n5. Give the total yearly cost, and the total for the flagged ones.\n6. Cancel only the services I name in a reply in this conversation, one at a time. For each, find its cancellation page, decline retention offers, and stop before the final confirmation to show me what it says (refunds, the end date, what's lost). Confirm only after I say yes to that one.\n\nDon't unsubscribe from emails, delete anything, or change payment settings.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- Never pay, buy, cancel, delete, or accept terms unless this prompt or my reply in this conversation says to.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "Cancelling usually needs the service's own site synced too. The agent names the site if it isn't.",
+        "Subscriptions billed through Apple or Google Play show up as their receipts in Gmail; cancel those on your phone."
+      ]
+    },
+    {
+      "title": "Your weekly App Store Connect numbers",
+      "summary": "Every Monday, your agent reads last week's downloads, proceeds, conversion, and new ratings and reviews for each of your apps in App Store Connect, compared with the week before.",
+      "useCase": "dashboards",
+      "sites": [
+        "apple.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every Monday at 9:00",
+        "cron": "0 9 * * 1"
+      },
+      "slug": "app-store-connect-weekly",
+      "source": "recipes/app-store-connect-weekly.md",
+      "prompt": "Use Clutchbox to get last week's numbers for my apps from App Store Connect.\n\nSettings (change these to suit you):\n- Apps: all of them.\n- Week: the last 7 days with data, compared with the 7 days before.\n\nSteps:\n1. Open a computer and go to https://appstoreconnect.apple.com. Tell me which account and team are signed in. If I belong to several teams, use each one.\n2. In Analytics (or Trends), read for each app: impressions, product page views, conversion rate, first-time downloads, redownloads, and proceeds, for the week and the week before. Note the last date with data.\n3. In Ratings and Reviews, list the reviews from the week with their stars, country, and a one-line summary, and the average rating.\n4. Make one table per app with each number, the week before, and the change in percent. Under it, in three sentences or fewer, say what moved most and anything that needs me, such as a run of 1-star reviews about the same thing.\n5. If you can write files where you run, add the rows to app-store-weekly.csv in your working folder (create it with a header row if it's missing).\n\nThis is read-only: don't reply to reviews, edit metadata or prices, or submit anything.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "App Store Connect's numbers lag by a day or two, so the week ends at the last date with data."
+      ]
+    },
+    {
+      "title": "Your weekly Google Search Console numbers",
+      "summary": "Every Monday, your agent reads last week's clicks, impressions, and positions for your sites in Search Console, with the queries and pages that moved most and any new indexing problems.",
+      "useCase": "dashboards",
+      "sites": [
+        "google.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every Monday at 9:00",
+        "cron": "0 9 * * 1"
+      },
+      "slug": "search-console-weekly",
+      "source": "recipes/search-console-weekly.md",
+      "prompt": "Use Clutchbox to get last week's Google Search Console numbers for my sites.\n\nSettings (change these to suit you):\n- Properties: all of them.\n- Week: the last 7 days with data, compared with the 7 days before.\n\nSteps:\n1. Open a computer and go to https://search.google.com/search-console. Tell me which Google account is signed in and list its properties.\n2. For each property, open Performance (Search results), set the dates to compare the week with the one before, and read total clicks, impressions, average CTR, and average position.\n3. List the 5 queries and 5 pages that gained the most clicks, and the 5 of each that lost the most.\n4. Open Pages (indexing) and note any reason for pages not being indexed that is new or grew this week. Note any new message in the inbox or a manual action.\n5. Make one table per property with each number, the week before, and the change. Under it, in three sentences or fewer, say what moved most and what needs me.\n6. If you can write files where you run, add the totals to search-console-weekly.csv in your working folder (create it with a header row if it's missing).\n\nThis is read-only: don't validate fixes, request indexing, submit sitemaps, or change users or settings.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": [
+        "Search Console's data runs two or three days behind, so the week ends at the last date with data.",
+        "Google may sign the computer out if your browser hasn't synced for a day. Keep Chrome open with the extension, or sync before the run."
+      ]
+    },
+    {
+      "title": "Your weekly X analytics numbers",
+      "summary": "Every Monday, your agent reads last week's impressions, engagement, profile visits, and follows from X's account analytics, compared with the week before, with your top posts.",
+      "useCase": "dashboards",
+      "sites": [
+        "x.com"
+      ],
+      "agents": [
+        "claude-code",
+        "codex",
+        "chatgpt",
+        "claude"
+      ],
+      "schedule": {
+        "when": "Every Monday at 9:00",
+        "cron": "0 9 * * 1"
+      },
+      "slug": "x-analytics-weekly",
+      "source": "recipes/x-analytics-weekly.md",
+      "prompt": "Use Clutchbox to get last week's numbers from my X analytics.\n\nSettings (change these to suit you):\n- Week: the last 7 days, compared with the 7 days before.\n\nSteps:\n1. Open a computer and go to https://x.com/i/account_analytics. Tell me which account is signed in. If X shows analytics only with a subscription the account doesn't have, say so and stop.\n2. Set the range to the week and read impressions, engagement rate, engagements, profile visits, replies, likes, reposts, bookmarks, shares, new follows, and unfollows. Do the same for the week before.\n3. List the week's 5 posts with the most impressions, with their link, impressions, engagements, and new follows if shown.\n4. Make one table with each number, the week before, and the change in percent. Under it, in three sentences or fewer, say what moved most and what the top posts have in common.\n5. If you can write files where you run, add the totals to x-analytics-weekly.csv in your working folder (create it with a header row if it's missing).\n\nThis is read-only: don't post, like, reply, follow, or change any setting.\n\nGround rules:\n- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.\n- Never type a password or a one-time code. If a site wants me to sign in, stop, tell me which site, and follow sign_in_help.\n- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.\n- When you're done, call computer_close.",
+      "notes": []
+    }
+  ],
+  "sites": [
+    {
+      "site": "x.com",
+      "name": "X",
+      "status": "partial",
+      "checked": "2026-10-16",
+      "held": "26 hours",
+      "notes": "Opened the home timeline signed in on first open, and again 26 hours after the last sync with no newer capture applied. Notifications, posting, replies, and account analytics are unchecked."
+    },
+    {
+      "site": "linkedin.com",
+      "name": "LinkedIn",
+      "status": "partial",
+      "checked": "2026-11-07",
+      "held": "about 4 minutes, the length of the check",
+      "notes": "On a new account, a synced session stayed signed in through the feed and the post composer, with LinkedIn's signed-in API answering after 3.5 minutes, in 2 of 2 runs. On an account with many earlier automated checks, LinkedIn signed the computer out within 30 to 100 seconds. Publishing posts and post analytics are unchecked."
+    },
+    {
+      "site": "threads.com",
+      "name": "Threads",
+      "status": "untested"
+    },
+    {
+      "site": "github.com",
+      "name": "GitHub",
+      "status": "partial",
+      "checked": "2026-10-16",
+      "held": "26 hours",
+      "notes": "Signed in 26 hours after the last sync. Billing and payment history are unchecked; GitHub may ask to confirm the password before some billing settings."
+    },
+    {
+      "site": "notion.so",
+      "name": "Notion",
+      "status": "partial",
+      "checked": "2026-10-16",
+      "held": "26 hours",
+      "notes": "Opened the workspace 26 hours after the last sync. Billing settings are unchecked."
+    },
+    {
+      "site": "google.com",
+      "name": "Google",
+      "status": "partial",
+      "checked": "2026-10-16",
+      "held": "under 24 hours",
+      "notes": "Gmail opened signed in right after a sync, but was signed out within a day with no newer sync, in two separate checks. Search Console is unchecked."
+    },
+    {
+      "site": "amazon.com",
+      "name": "Amazon",
+      "status": "partial",
+      "checked": "2026-10-16",
+      "held": "under 24 hours",
+      "notes": "The homepage showed the account right after a sync; a day later, with no newer sync, the orders page asked for the password."
+    },
+    {
+      "site": "doordash.com",
+      "name": "DoorDash",
+      "status": "fails",
+      "checked": "2026-10-21",
+      "notes": "The cart opened signed in, then DoorDash's Cloudflare Turnstile check failed without offering a checkbox. Checked before computers presented the synced browser's platform and time zone; needs a recheck."
+    },
+    {
+      "site": "uber.com",
+      "name": "Uber",
+      "status": "untested"
+    },
+    {
+      "site": "ubereats.com",
+      "name": "Uber Eats",
+      "status": "untested"
+    },
+    {
+      "site": "instacart.com",
+      "name": "Instacart",
+      "status": "untested"
+    },
+    {
+      "site": "paypal.com",
+      "name": "PayPal",
+      "status": "untested"
+    },
+    {
+      "site": "apple.com",
+      "name": "App Store Connect",
+      "status": "untested"
+    }
+  ]
+}
