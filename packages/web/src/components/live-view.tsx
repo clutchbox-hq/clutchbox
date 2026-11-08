@@ -1,5 +1,6 @@
 /// <reference path="../lib/novnc.d.ts" />
 'use client';
+import { FORK_UNUSED_MS } from '@clutchbox/server/computer-timing';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@clutchbox/ui/components/alert';
 import {
   AlertDialog,
@@ -52,6 +53,7 @@ import {
 } from '../lib/live-view-input.ts';
 import { agentName } from './agent-connections.tsx';
 import { useLeaveGuard } from './app-shell.tsx';
+import { PinActions } from './pin-computer.tsx';
 
 // Close codes from the relay (RELAY_CLOSE in packages/server/src/live-view-relay.ts): 4000 is its clean close
 // before the route's time limit, so reconnect at once; 4001 means this lease lost its watch (hidden too long) or the
@@ -79,6 +81,13 @@ type Target = { computer?: string | undefined; name: string };
 const MAIN: Target = { name: 'Your computer' };
 const forkName = (fork: Fork) => fork.label ?? (fork.agent ? `${agentOf(fork.agent)}'s computer` : 'Agent computer');
 const agentOf = ({ agent, host }: NonNullable<Fork['agent']>) => (agent ? agentName(agent) : host);
+const statusNames: Record<Fork['status'], string> = {
+  starting: 'Starting',
+  in_use: 'Working now',
+  running: 'Idle',
+  paused: 'Paused',
+};
+const UNUSED_DAYS = FORK_UNUSED_MS / (24 * 3600_000);
 
 // Live view on the Computer page: noVNC, through our relay, on the user's main computer or one of their agents' forks
 // of it. It starts only when the user chooses Watch or Take control, so opening the page neither wakes a computer nor
@@ -86,8 +95,8 @@ const agentOf = ({ agent, host }: NonNullable<Fork['agent']>) => (agent ? agentN
 // the user takes control; the relay passes input only while it does, so noVNC's viewOnly only spares the user dead
 // input. Stopping, switching computers, or leaving the page releases the lease, which ends the watch and hands back.
 // metered: there is a credit (the metering hook); exhausted: it is used up (as LiveViewStatus says), until it
-// resets. forks: the agents' forks that are not paused. A link with ?computer=<fork ID>, the live-view link the REST API
-// gives developers, starts watching that fork.
+// resets. forks: the agents' forks that are not paused, and the pinned ones. A link with ?computer=<fork ID>, the
+// live-view link the REST API gives developers, starts watching that fork.
 export function LiveViewPanel({
   metered,
   exhausted,
@@ -127,8 +136,9 @@ export function LiveViewPanel({
   );
 }
 
-// The main computer and the agents' running forks of it, each with the agent using it; Watch or Take control moves
-// live view to one. viewing: the computer live view is on (null for the main computer), undefined when it is off.
+// The main computer, then the agents' pinned forks of it and their running ones, each with the agent using it; Watch or
+// Take control moves live view to one, and a fork can be pinned, renamed, or unpinned. viewing: the computer live view
+// is on (null for the main computer), undefined when it is off.
 function AgentComputers({
   forks,
   viewing,
@@ -142,14 +152,19 @@ function AgentComputers({
 }) {
   const rows = [
     { target: MAIN, note: "Agents' new computers are copies of it, made when they start.", starting: false },
-    ...forks.map(fork => ({
-      target: { computer: fork.computerId, name: forkName(fork) },
-      note: [
-        fork.agent ? agentOf(fork.agent) : 'No agent',
-        fork.status === 'starting' ? 'Starting' : fork.status === 'in_use' ? 'Working now' : 'Idle',
-      ].join(' · '),
-      starting: fork.status === 'starting',
-    })),
+    // Pinned first; each group keeps the most recently used first.
+    ...[...forks]
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+      .map(fork => ({
+        target: { computer: fork.computerId, name: forkName(fork) },
+        note: [
+          ...(fork.pinned ? ['Pinned'] : []),
+          fork.agent ? agentOf(fork.agent) : 'No agent',
+          statusNames[fork.status],
+        ].join(' · '),
+        starting: fork.status === 'starting',
+        fork,
+      })),
   ];
   return (
     <Card>
@@ -159,12 +174,13 @@ function AgentComputers({
         </CardTitle>
         <CardDescription>
           Your agents each work on their own copy of your computer. Watch one, or take control to help it past a sign-in
-          or a check; the agent waits until you hand back.
+          or a check; the agent waits until you hand back. Pin one to keep it by name: copies that aren't pinned are
+          deleted after {UNUSED_DAYS} days unused.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <ItemGroup className="gap-0">
-          {rows.map(({ target, note, starting }, index) => (
+          {rows.map(({ target, note, starting, ...row }, index) => (
             <div key={target.computer ?? 'main'}>
               {index > 0 && <ItemSeparator />}
               <Item className="px-0">
@@ -172,7 +188,8 @@ function AgentComputers({
                   <ItemTitle>{target.name}</ItemTitle>
                   <ItemDescription>{note}</ItemDescription>
                 </ItemContent>
-                <ItemActions>
+                <ItemActions className="flex-wrap justify-end">
+                  {'fork' in row && <PinActions fork={row.fork} />}
                   {viewing === (target.computer ?? null) ? (
                     <span className="text-sm text-muted-foreground">In live view</span>
                   ) : (

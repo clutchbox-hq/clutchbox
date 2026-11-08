@@ -20,13 +20,14 @@ import {
   handBackComputer,
   liveViewStatus,
   openComputerSession,
+  pinFork,
   SESSION_ID_PATTERN,
   takeOverComputer,
 } from '../../server/src/computers.ts';
 import type { ServerConfig } from '../../server/src/config.ts';
 import type { Database } from '../../server/src/database.ts';
 import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
-import { noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
+import { noLimits, noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
 import {
   consentMembership,
   hasLiveGrant,
@@ -336,6 +337,7 @@ describe('remote MCP OAuth boundary', () => {
     const listed = await rpc(await call(token.access_token, 'tools/list', {}));
     expect(listed.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
       'computer_open',
+      'computer_list',
       'computer_close',
       'computer_act',
       'browser',
@@ -707,8 +709,31 @@ describe('main computer tools', () => {
     const taken = (await tool(chatgpt.access_token, 'computer_open', { computer_id: computerId })).result;
     expect(taken.structuredContent).toMatchObject({ computer_id: computerId, new_computer: false });
     expect(taken.structuredContent.computers).toEqual([
-      { computer_id: own.computer_id, label: null, last_used_at: expect.any(String), status: 'in_use' },
+      { computer_id: own.computer_id, label: null, pinned: false, last_used_at: expect.any(String), status: 'in_use' },
     ]);
+    // computer_list lists them all without opening one, a pinned computer by the user's name for it.
+    await pinFork(db, noLimits, await member(a.id), computerId, 'Q3 invoices');
+    const listed = (await tool(claude.access_token, 'computer_list', {})).result;
+    expect(listed.isError).toBe(false);
+    expect(listed.structuredContent).toEqual({
+      computers: [
+        {
+          computer_id: computerId,
+          label: 'Q3 invoices',
+          pinned: true,
+          last_used_at: expect.any(String),
+          status: 'in_use',
+        },
+        {
+          computer_id: own.computer_id,
+          label: null,
+          pinned: false,
+          last_used_at: expect.any(String),
+          status: 'in_use',
+        },
+      ],
+    });
+    expect(initialized.result.instructions).toContain('computer_list');
     // Once the user stops syncing, the next open signs the computer out of the sites it had synced, naming them.
     await deleteCaptures(db, await member(a.id));
     const signedOut = (

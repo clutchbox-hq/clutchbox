@@ -40,7 +40,7 @@ export type ComputerView = {
     inLiveView: boolean;
     appliedCaptureAt: string | null;
   } | null;
-  // Agents' forks of it that are not paused.
+  // Agents' forks of it that are not paused, and the pinned ones, paused or not.
   forks: ForkView[];
 };
 // One connected client. `agent` is known only from its client_id URL; `host` is where that URL points.
@@ -123,6 +123,23 @@ export class ApiError extends Error {
 }
 
 export const computerQuery = queryOptions({ queryKey: ['computer'], queryFn: () => api<ComputerView>('/computer') });
+// Pins one of the member's forks under a name, or renames a pinned one; unpins one. Past the deployment's cap,
+// pinned_fork_limit (failure.tsx words it).
+export function usePinComputer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ computer, label }: { computer: string; label: string }) =>
+      api<{ pinned: true; label: string }>(`/computer/forks/${computer}/pin`, 'PUT', { label }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
+  });
+}
+export function useUnpinComputer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (computer: string) => api<{ pinned: false }>(`/computer/forks/${computer}/pin`, 'DELETE'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
+  });
+}
 export const grantsQuery = queryOptions({
   queryKey: ['mcp', 'grants'],
   queryFn: () => api<{ grants: Grant[] }>('/mcp/grants'),

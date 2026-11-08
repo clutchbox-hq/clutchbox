@@ -65,12 +65,15 @@ export type Limits = {
   members(db: Pick<Database, 'select'>, organizationId: string): Promise<MemberLimit | null>;
   // Forks that may run at once across its members, where organizations.max_running_forks is not set.
   runningForks(db: Pick<Database, 'select'>, organizationId: string): Promise<number | null>;
+  // Forks its members may have pinned at once (computers.ts, pinFork); null for no cap.
+  pinnedForks(db: Pick<Database, 'select'>, organizationId: string): Promise<number | null>;
   // Why its developer API (organization API keys and joining through Connect) refuses it, shown to the caller.
   apiRefusal(db: Pick<Database, 'select'>, organizationId: string): Promise<string | null>;
 };
 export const noLimits: Limits = {
   members: async () => null,
   runningForks: async () => null,
+  pinnedForks: async () => null,
   apiRefusal: async () => null,
 };
 

@@ -18,7 +18,7 @@ import { MAX_CLIPBOARD_IMAGE_BYTES, openComputerSession, useComputerSession } fr
 import type { ServerConfig } from '../../server/src/config.ts';
 import type { Database } from '../../server/src/database.ts';
 import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
-import { type MeteringRefusal, noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
+import { type MeteringRefusal, noLimits, noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
 import { inTheOrganization, membership } from '../../server/src/member-fixtures.ts';
 import { createOrganization, currentMember } from '../../server/src/organizations.ts';
 import * as schema from '../../server/src/schema.ts';
@@ -130,6 +130,8 @@ describe('API routes', () => {
       ['POST', '/computer/reset'],
       ['PUT', '/computer/size'],
       ['PUT', '/computer/screen'],
+      ['PUT', '/computer/forks/computer_x/pin'],
+      ['DELETE', '/computer/forks/computer_x/pin'],
       ['POST', '/computer/takeover'],
       ['POST', '/computer/hand-back'],
       ['POST', '/computer/clipboard'],
@@ -671,6 +673,75 @@ describe('API routes', () => {
     expect((await (await request('GET', '/computer', { cookie: a })).json()).computer.busy).toBe(false);
   });
 
+  it("Pin keeps one of the caller's forks by name, renames and unpins it, and refuses past the cap or for others", async () => {
+    const a = await identity('a');
+    const b = await identity('b');
+    const limited = new Set<string>();
+    const request = client(fake.provider, {
+      hooks: {
+        metering: noMetering,
+        operatorAdmin: noOperatorAdmin,
+        limits: { ...noLimits, pinnedForks: async (_, id) => (limited.has(id) ? 1 : null) },
+      },
+    });
+    const fork = async (userId: string) => {
+      const opened = await openComputerSession(
+        db,
+        { provider: fake.provider, metering: noMetering },
+        { ...(await member(userId)), clientId: 'agent-client' },
+      );
+      if ('error' in opened) throw new Error(opened.error);
+      await opened.done();
+      return opened.computer.id;
+    };
+    const first = await fork('a');
+    const second = await fork('a');
+    const pin = (cookie: string, id: string, body: unknown) =>
+      request('PUT', `/computer/forks/${id}/pin`, { cookie, body });
+    const forks = async (cookie: string) =>
+      (
+        (await (await request('GET', '/computer', { cookie })).json()).forks as {
+          computerId: string;
+          label: string;
+          pinned: boolean;
+        }[]
+      ).map(({ computerId, label, pinned }) => ({ computerId, label, pinned }));
+    // A name of 1 to 100 characters, trimmed, and nothing else.
+    for (const body of [
+      {},
+      { label: '' },
+      { label: '   ' },
+      { label: 'x'.repeat(101) },
+      { label: 'A', extra: 1 },
+      'nope',
+    ])
+      expect((await pin(a, first, body)).status, JSON.stringify(body)).toBe(400);
+    const pinned = await pin(a, first, { label: '  Research  ' });
+    expect(pinned.status).toBe(200);
+    expect(await pinned.json()).toEqual({ pinned: true, label: 'Research' });
+    expect(await forks(a)).toContainEqual({ computerId: first, label: 'Research', pinned: true });
+    // Another person's fork, or one that doesn't exist, is not found, to pin or unpin.
+    for (const id of [first, 'computer_unknown', 'not-an-id']) {
+      expect((await pin(b, id, { label: 'Mine' })).status).toBe(404);
+      expect((await request('DELETE', `/computer/forks/${id}/pin`, { cookie: b })).status).toBe(404);
+    }
+    // Past the deployment's cap, pinned_fork_limit; renaming a pinned one takes no new place.
+    limited.add((await member('a')).organizationId);
+    const refused = await pin(a, second, { label: 'More' });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: 'pinned_fork_limit', limit: 1 });
+    expect(await (await pin(a, first, { label: 'Deep research' })).json()).toEqual({
+      pinned: true,
+      label: 'Deep research',
+    });
+    // Unpinned, it keeps its name, and its place is free.
+    const unpinned = await request('DELETE', `/computer/forks/${first}/pin`, { cookie: a });
+    expect(unpinned.status).toBe(200);
+    expect(await unpinned.json()).toEqual({ pinned: false });
+    expect((await pin(a, second, { label: 'More' })).status).toBe(200);
+    expect(await forks(b)).toEqual([]);
+  });
+
   it("keep each page load's live view watch through the heartbeat, per user, and validate what it reports", async () => {
     const request = client();
     const a = await identity('a');
@@ -943,6 +1014,7 @@ describe('API routes', () => {
       {
         computerId: fork,
         label: 'Book a table',
+        pinned: false,
         createdAt: expect.any(String),
         lastUsedAt: expect.any(String),
         status: 'in_use',

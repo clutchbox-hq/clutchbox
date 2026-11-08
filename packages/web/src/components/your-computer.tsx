@@ -46,7 +46,7 @@ export function YourComputer() {
           />
           <ComputerSizeCard view={view} />
           <ScreenSizeCard view={view} />
-          {view.computer && <ResetComputer />}
+          {view.computer && <ResetComputer pinned={view.forks.some(fork => fork.pinned)} />}
         </>
       ) : (
         <p className="text-foreground">{isError ? 'Your computer could not load. Reload to try again.' : 'Loading…'}</p>
@@ -174,6 +174,7 @@ function ComputerSizeCard({ view }: { view: ComputerView }) {
             <p className="text-sm">
               Changing to {pending} resets your computer onto the new size. Its files and every sign-in made on it are
               deleted, and an agent using it now stops. Your synced sites come back the next time an agent opens it.
+              {view.forks.some(fork => fork.pinned) && ' Your pinned computers are deleted too.'}
             </p>
             <div className="flex flex-wrap gap-3">
               <Button variant="destructive" disabled={change.isPending} onClick={() => change.mutate(pending)}>
@@ -264,7 +265,8 @@ function ScreenSizeCard({ view }: { view: ComputerView }) {
 }
 
 // Rebuilds the computer from the current image; synced data and setup stay.
-function ResetComputer() {
+// pinned: the member has pinned computers, which a reset deletes with the rest.
+function ResetComputer({ pinned }: { pinned: boolean }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const reset = useMutation({
@@ -290,6 +292,7 @@ function ResetComputer() {
             <p className="text-sm">
               This replaces your computer with a fresh one. Its files and every sign-in made on it are deleted, and an
               agent using it now stops. Your synced sites come back the next time an agent opens it.
+              {pinned && ' Your pinned computers are deleted too.'}
             </p>
             <div className="flex flex-wrap gap-3">
               <Button variant="destructive" disabled={reset.isPending} onClick={() => reset.mutate()}>

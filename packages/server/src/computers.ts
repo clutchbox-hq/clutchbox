@@ -997,8 +997,8 @@ export async function computerSessionState(
 // Agents work in forks of the member's main computer, never in main. A fork is a computers row with fork_of set: a
 // copy of main from one of its snapshots, with its own computer sessions, calls, metering, and applies like any
 // computer. computer_open without an ID creates one; with its ID, any agent of the member reopens it, and forks unused
-// for FORK_UNUSED_MS are deleted. Main is snapshotted when a fork needs it and it has no snapshot, or a takeover ended
-// since its latest (latestSnapshot). The provider keeps a snapshot until every fork made from it is deleted, so a
+// for FORK_UNUSED_MS are deleted unless the member pinned them (Pinned forks, below). Main is snapshotted when a fork
+// needs it and it has no snapshot, or a takeover ended since its latest (latestSnapshot). The provider keeps a snapshot until every fork made from it is deleted, so a
 // superseded snapshot is deleted once its last fork is (deleteUnusedSnapshots).
 
 // Forks running at once across an organization's members, unless organizations.max_running_forks says otherwise. A
@@ -1010,7 +1010,7 @@ const SWEEP_BATCH = 3;
 const forkNotFound: ComputerFailure = {
   error: 'computer_not_found',
   message:
-    'No such computer for this account. Pick one from the computers computer_open returns, or call computer_open without computer_id for a new one.',
+    'No such computer for this account. Pick one from computer_list, or call computer_open without computer_id for a new one.',
 };
 // One of the member's forks by its public ID.
 const forkOfMember = (member: Pick<Member, 'membershipId'>, computerId: string) =>
@@ -1326,6 +1326,8 @@ async function deleteUnusedSnapshots(db: Database, providers: Providers, only?: 
 export type ForkView = {
   computerId: string;
   label: string | null;
+  // The member pinned it: label is its name, and it is never deleted for disuse.
+  pinned: boolean;
   createdAt: string;
   lastUsedAt: string;
   // in_use: a computer session holds control, or the user took it over in live view.
@@ -1341,6 +1343,7 @@ export async function listForks(db: Database, member: Member, now = new Date()):
       id: schema.computers.id,
       publicId: schema.computers.publicId,
       label: schema.computers.label,
+      pinnedAt: schema.computers.pinnedAt,
       status: schema.computers.status,
       createdAt: schema.computers.createdAt,
       lastUsedAt: schema.computers.lastUsedAt,
@@ -1385,6 +1388,7 @@ export async function listForks(db: Database, member: Member, now = new Date()):
   return forks.map(fork => ({
     computerId: fork.publicId,
     label: fork.label,
+    pinned: !!fork.pinnedAt,
     createdAt: fork.createdAt.toISOString(),
     lastUsedAt: (fork.lastUsedAt ?? fork.createdAt).toISOString(),
     status:
@@ -1453,8 +1457,8 @@ const killFork = async (provider: ComputerProvider, fork: Pick<ComputerRow, 'pub
     if (sandboxId) await provider.kill(sandboxId);
 };
 
-// Deletes, across the deployment, forks unused for FORK_UNUSED_MS and paused, and forks whose create was abandoned
-// (CREATE_STALE_MS), then snapshots nothing uses, SWEEP_BATCH of each per run. The open core has no scheduler, so this
+// Deletes, across the deployment, forks unused for FORK_UNUSED_MS and paused but not pinned, and forks whose create was
+// abandoned (CREATE_STALE_MS), pinned or not, then snapshots nothing uses, SWEEP_BATCH of each per run. The open core has no scheduler, so this
 // runs on the calls that can afford it, computer_close and deleting a fork, as tool call retention runs on each call.
 // Each fork is killed on its organization's provider.
 export async function sweepForks(db: Database, providers: Providers, now = new Date()) {
@@ -1463,6 +1467,7 @@ export async function sweepForks(db: Database, providers: Providers, now = new D
     or(
       and(
         eq(schema.computers.status, 'ready'),
+        isNull(schema.computers.pinnedAt),
         lt(schema.computers.lastUsedAt, new Date(now.getTime() - FORK_UNUSED_MS)),
         or(isNull(schema.computers.runsUntil), lt(schema.computers.runsUntil, now)),
       ),
@@ -1493,6 +1498,74 @@ export async function sweepForks(db: Database, providers: Providers, now = new D
       })
       .catch(error => logError('fork expiry', error));
   await deleteUnusedSnapshots(db, providers);
+}
+
+// --- Pinned forks ---
+// A member pins one of their forks to keep it as their agents' own computer: it takes the member's name for it (its
+// label), shows on the Computer page even while paused, and is never deleted for disuse (sweepForks). Otherwise it is a
+// fork like any: each open applies the latest capture, nothing flows back to main, and resetting main deletes it. A
+// deployment may cap the forks an organization's members have pinned (hooks.ts, Limits.pinnedForks).
+export type PinFailure = { error: 'not_found' } | { error: 'pinned_fork_limit'; limit: number };
+
+// Pins one of the member's forks under `label` (1 to 100 characters, as computers_label checks), or renames one
+// already pinned, which takes no new place. The cap is counted under a lock that serializes pins across the
+// organization's members, so two cannot both take the last place; the fork's row lock keeps a sweep from deleting it
+// meanwhile (sweepForks re-checks under it).
+export async function pinFork(
+  db: Database,
+  limits: Limits,
+  member: Member,
+  computerId: string,
+  label: string,
+  now = new Date(),
+): Promise<{ pinned: true; label: string } | PinFailure> {
+  if (!COMPUTER_ID_PATTERN.test(computerId)) return { error: 'not_found' };
+  return db.transaction(async (tx): Promise<{ pinned: true; label: string } | PinFailure> => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('agent-computers-pinned-forks'), hashtext(${member.organizationId}))`,
+    );
+    const [fork] = await tx
+      .select({ id: schema.computers.id, pinnedAt: schema.computers.pinnedAt })
+      .from(schema.computers)
+      .where(forkOfMember(member, computerId))
+      .for('update');
+    if (!fork) return { error: 'not_found' };
+    if (!fork.pinnedAt) {
+      const limit = await limits.pinnedForks(tx, member.organizationId);
+      if (limit !== null) {
+        const [pinned] = await tx
+          .select({ count: sql`count(*)`.mapWith(Number) })
+          .from(schema.computers)
+          .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
+          .where(
+            and(eq(schema.memberships.organizationId, member.organizationId), isNotNull(schema.computers.pinnedAt)),
+          );
+        if ((pinned?.count ?? 0) >= limit) return { error: 'pinned_fork_limit', limit };
+      }
+    }
+    await tx
+      .update(schema.computers)
+      .set({ label, pinnedAt: fork.pinnedAt ?? now, updatedAt: now })
+      .where(eq(schema.computers.id, fork.id));
+    return { pinned: true, label };
+  });
+}
+
+// Unpins one of the member's forks, keeping its name as its label. Unpinning counts as a use, so the fork has
+// FORK_UNUSED_MS from now before a sweep deletes it, rather than going at the next one.
+export async function unpinFork(
+  db: Database,
+  member: Member,
+  computerId: string,
+  now = new Date(),
+): Promise<{ pinned: false } | { error: 'not_found' }> {
+  if (!COMPUTER_ID_PATTERN.test(computerId)) return { error: 'not_found' };
+  const [fork] = await db
+    .update(schema.computers)
+    .set({ pinnedAt: null, lastUsedAt: now, updatedAt: now })
+    .where(forkOfMember(member, computerId))
+    .returning({ id: schema.computers.id });
+  return fork ? { pinned: false } : { error: 'not_found' };
 }
 
 // Kills every provider computer of a member's that is going away (main and forks), then their snapshots, which the
@@ -2501,8 +2574,9 @@ export async function computerView(
         ),
       ),
   ]);
-  // Agents work in forks: busy while one of them holds a fork. Live view lists the forks that are not paused.
-  const forks = row ? (await listForks(db, member, now)).filter(fork => fork.status !== 'paused') : [];
+  // Agents work in forks: busy while one of them holds a fork. Live view lists the forks that are not paused, and the
+  // pinned ones, paused or not.
+  const forks = row ? (await listForks(db, member, now)).filter(fork => fork.pinned || fork.status !== 'paused') : [];
   const live = row
     ? await db
         .select({ lastCallAt: schema.computerSessions.lastCallAt, suspendedAt: schema.computerSessions.suspendedAt })

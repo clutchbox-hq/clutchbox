@@ -65,6 +65,7 @@ import {
   issueCdpToken,
   MAX_CLIPBOARD_IMAGE_BYTES,
   openComputerSession,
+  pinFork,
   SCREEN_NAMES,
   SESSION_ID_PATTERN,
   type SessionHandle,
@@ -72,6 +73,7 @@ import {
   setComputerSize,
   setLiveViewClipboard,
   takeOverComputer,
+  unpinFork,
   useComputerSession,
 } from '@clutchbox/server/computers';
 import type { SignInMethods } from '@clutchbox/server/config';
@@ -703,6 +705,22 @@ export function createApi({
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
     const result = await setComputerScreen(db, running, await memberOf(c), parsed.data.screen);
     return c.json({ screen: parsed.data.screen, result });
+  });
+  // Pinned computers: pin one of the member's forks under a name, or rename one already pinned; unpin keeps the name.
+  // Past the deployment's cap (hooks.ts, Limits.pinnedForks), pinned_fork_limit with the cap.
+  app.put('/computer/forks/:id/pin', async c => {
+    const parsed = z
+      .object({ label: z.string().trim().min(1).max(100) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+    const pinned = await pinFork(db, limits, await memberOf(c), c.req.param('id'), parsed.data.label);
+    if ('error' in pinned) return c.json(pinned, pinned.error === 'not_found' ? 404 : 409);
+    return c.json(pinned);
+  });
+  app.delete('/computer/forks/:id/pin', async c => {
+    const unpinned = await unpinFork(db, await memberOf(c), c.req.param('id'));
+    return 'error' in unpinned ? c.json(unpinned, 404) : c.json(unpinned);
   });
   // Live view. The page's heartbeat: each lease it holds goes to its kind's handler
   // (heartbeat.ts), which answers with the lease's status.

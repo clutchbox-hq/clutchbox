@@ -28,6 +28,7 @@ import {
   MAX_CLIPBOARD_BYTES,
   MAX_CLIPBOARD_IMAGE_BYTES,
   openComputerSession,
+  pinFork,
   platformOverrideOf,
   resetOrganizationComputers,
   SESSION_ID_PATTERN,
@@ -36,6 +37,7 @@ import {
   setLiveViewClipboard,
   sweepForks,
   takeOverComputer,
+  unpinFork,
   useComputerSession,
 } from './computers.ts';
 import type { Database } from './database.ts';
@@ -823,6 +825,7 @@ describe('forks', () => {
       {
         computerId: second.computer.id,
         label: null,
+        pinned: false,
         createdAt: '2026-10-20T12:00:10.000Z',
         lastUsedAt: '2026-10-20T12:00:10.000Z',
         status: 'paused',
@@ -832,6 +835,7 @@ describe('forks', () => {
       {
         computerId: first.computer.id,
         label: 'Invoices',
+        pinned: false,
         createdAt: '2026-10-20T12:00:00.000Z',
         lastUsedAt: '2026-10-20T12:00:00.000Z',
         status: 'in_use',
@@ -889,6 +893,77 @@ describe('forks', () => {
     await sweepForks(db, { provider: fake.provider });
     expect((await listForks(db, a)).map(fork => fork.computerId)).toEqual([]);
     expect(await listForks(db, b)).toHaveLength(1);
+  });
+  it('keeps a pinned fork by name past the sweep, shows it paused, caps pins per organization, and unpins it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    at('2026-10-01T12:00:00Z');
+    const a = await user('a');
+    const b = await join((await user('b-person')).userId, a.organizationId);
+    const other = await user('c');
+    const kept = await open(a, 'claude');
+    await closeComputerSession(db, computers, caller(a, 'claude'), kept.sessionId);
+    const second = await open(a, 'claude');
+    await closeComputerSession(db, computers, caller(a, 'claude'), second.sessionId);
+    const ofB = await open(b, 'claude');
+    await closeComputerSession(db, computers, caller(b, 'claude'), ofB.sessionId);
+    const ofOther = await open(other, 'claude');
+    // Two pins across the organization's members, counted under the deployment's limit; renaming takes no new place.
+    const limits = { ...noLimits, pinnedForks: async (_: unknown, id: string) => (id === a.organizationId ? 2 : null) };
+    expect(await pinFork(db, limits, a, kept.computer.id, 'Research')).toEqual({ pinned: true, label: 'Research' });
+    expect(await pinFork(db, limits, b, ofB.computer.id, 'Inbox')).toEqual({ pinned: true, label: 'Inbox' });
+    expect(await pinFork(db, limits, a, second.computer.id, 'More')).toEqual({ error: 'pinned_fork_limit', limit: 2 });
+    expect(await pinFork(db, limits, a, kept.computer.id, 'Deep research')).toEqual({
+      pinned: true,
+      label: 'Deep research',
+    });
+    // Without a limit, any number; only the member's own forks, by a well-formed ID.
+    expect(await pinFork(db, noLimits, other, ofOther.computer.id, 'Mine')).toMatchObject({ pinned: true });
+    expect(await pinFork(db, noLimits, other, kept.computer.id, 'Theirs')).toEqual({ error: 'not_found' });
+    expect(await pinFork(db, noLimits, a, 'computer_nope', 'Bad')).toEqual({ error: 'not_found' });
+    expect(await unpinFork(db, other, kept.computer.id)).toEqual({ error: 'not_found' });
+    // Main is never pinned, and a pinned fork needs its name (computers_pinned).
+    await expect(
+      db.update(schema.computers).set({ pinnedAt: new Date() }).where(isNull(schema.computers.forkOf)),
+    ).rejects.toThrow();
+    await expect(
+      db.update(schema.computers).set({ label: null }).where(eq(schema.computers.publicId, kept.computer.id)),
+    ).rejects.toThrow();
+    // Paused, the pinned fork still shows on the Computer page, and the unpinned one doesn't.
+    const shown = (await computerView(db, computers, a)).forks;
+    expect(shown.map(fork => [fork.computerId, fork.label, fork.pinned, fork.status])).toEqual([
+      [kept.computer.id, 'Deep research', true, 'paused'],
+    ]);
+    // A pinned fork whose create was abandoned goes all the same.
+    const sibling = await forkRow(ofOther.computer.id);
+    await db.insert(schema.computers).values({
+      publicId: newPublicId('computer'),
+      membershipId: other.membershipId,
+      forkOf: sibling.forkOf,
+      snapshotId: sibling.snapshotId,
+      label: 'Abandoned',
+      pinnedAt: new Date(),
+      lastUsedAt: new Date(),
+      updatedAt: new Date(),
+    });
+    // A week unused, the sweep deletes only the forks not pinned.
+    at('2026-10-09T12:00:00Z');
+    await sweepForks(db, { provider: fake.provider });
+    expect((await forks()).map(fork => fork.publicId).sort()).toEqual(
+      [kept.computer.id, ofB.computer.id, ofOther.computer.id].sort(),
+    );
+    // Reopening a pinned fork works as for any fork.
+    expect(await open(a, 'chatgpt', undefined, kept.computer.id)).toHaveProperty('sessionId');
+    // Unpinned, it keeps its name and has a week from now before the sweep deletes it.
+    expect(await unpinFork(db, b, ofB.computer.id)).toEqual({ pinned: false });
+    expect(await listForks(db, b)).toEqual([expect.objectContaining({ label: 'Inbox', pinned: false })]);
+    await sweepForks(db, { provider: fake.provider });
+    expect(await listForks(db, b)).toHaveLength(1);
+    at('2026-10-16T12:00:01Z');
+    await sweepForks(db, { provider: fake.provider });
+    expect(await listForks(db, b)).toEqual([]);
+    // Its place is free again.
+    const third = await open(a, 'claude');
+    expect(await pinFork(db, limits, a, third.computer.id, 'Taxes')).toMatchObject({ pinned: true });
   });
   it('deletes a fork whose create failed, with its session, so nothing is left behind', async () => {
     const a = await user('a');

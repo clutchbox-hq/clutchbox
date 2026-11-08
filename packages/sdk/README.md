@@ -28,7 +28,7 @@ To link your own users to members, register your app under **Connect apps** on t
 
 ## Computer sessions
 
-`computers.open({ member })` starts a session on a new fork of the member's computer, a copy with their newest sign-ins applied (`session.sync` says how they applied). Pass `computer: session.computer.id` to reopen that fork later as it was left, and `session` with your current session's ID to replace it on the same fork. A fork unused for a week is deleted.
+`computers.open({ member })` starts a session on a new fork of the member's computer, a copy with their newest sign-ins applied (`session.sync` says how they applied). Pass `computer: session.computer.id` to reopen that fork later as it was left, and `session` with your current session's ID to replace it on the same fork. A fork unused for a week is deleted, unless the member pinned it in the web app.
 
 Each browser the member syncs is its own Chrome profile on their computers, with that browser's sign-ins, so a site can be signed in as a different person in each, such as a work and a personal account. A session uses one: `session.profile`, among `session.profiles` (`{ id, browser, platform, lastSyncedAt, default }`). Pass `profile: id` to `computers.open` to choose one; without it, a reopened fork keeps the profile it had, and a new fork gets the default, the browser that synced last. `captures.latest(member, { profile })` reads one profile's capture, and the default's without it.
 

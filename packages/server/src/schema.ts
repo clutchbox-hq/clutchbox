@@ -283,10 +283,13 @@ export const computers = pgTable(
     snapshotId: key('snapshot_id').references((): AnyPgColumn => computerSnapshots.id, { onDelete: 'set null' }),
     // Main: when a takeover ended after its latest snapshot, so the next fork needs a new one first.
     snapshotDueAt: time('snapshot_due_at'),
-    // A fork's name from the agent that made it, listed in computer_open's results.
+    // A fork's name from the agent that made it, or the member's for a pinned fork, listed in computer_open's results.
     label: text('label'),
-    // A fork's latest open or call; one unused for FORK_UNUSED_MS is deleted.
+    // A fork's latest open or call; one unused for FORK_UNUSED_MS is deleted, unless pinned.
     lastUsedAt: time('last_used_at'),
+    // When the member pinned the fork (computers.ts, pinFork): it keeps its label as its name and is never deleted for
+    // disuse. Only a fork with a label is pinned.
+    pinnedAt: time('pinned_at'),
     status: text('status', { enum: COMPUTER_STATUSES }).notNull().default('creating'),
     // The size it was created at, which metering charges by: the member's choice for a main computer, and its main
     // computer's for a fork.
@@ -349,6 +352,10 @@ export const computers = pgTable(
     check(
       'computers_fork',
       sql`${table.forkOf} IS NULL OR (${table.snapshotDueAt} IS NULL AND ${table.lastUsedAt} IS NOT NULL)`,
+    ),
+    check(
+      'computers_pinned',
+      sql`${table.pinnedAt} IS NULL OR (${table.forkOf} IS NOT NULL AND ${table.label} IS NOT NULL)`,
     ),
     check('computers_time_zone', timeZoneName(table.timeZone)),
     check(

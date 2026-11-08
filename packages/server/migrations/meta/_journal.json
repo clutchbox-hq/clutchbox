@@ -309,6 +309,13 @@
       "when": 1794104546551,
       "tag": "0043_drop_largest_computer_size",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794105822802,
+      "tag": "0044_pinned_forks",
+      "breakpoints": true
     }
   ]
 }

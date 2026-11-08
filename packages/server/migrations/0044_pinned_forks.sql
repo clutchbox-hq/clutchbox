@@ -1,0 +1,2 @@
+ALTER TABLE "computers" ADD COLUMN "pinned_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "computers" ADD CONSTRAINT "computers_pinned" CHECK ("computers"."pinned_at" IS NULL OR ("computers"."fork_of" IS NOT NULL AND "computers"."label" IS NOT NULL));
