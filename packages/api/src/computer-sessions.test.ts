@@ -82,13 +82,14 @@ describe('computer sessions over REST', () => {
     const session = await client.computers.open({ member: worker.publicId });
     // Another key of the same organization can't see or use it.
     const second = await newKey(admin.cookie);
+    // Each started only once awaited: one that settled while an earlier one was awaited would be an unhandled rejection.
     for (const attempt of [
-      second.client.computers.state(session.id),
-      second.client.computers.exec(session.id, 'true'),
-      second.client.computers.close(session.id),
-      second.client.computers.exec('cs_nonsense', 'true'),
+      () => second.client.computers.state(session.id),
+      () => second.client.computers.exec(session.id, 'true'),
+      () => second.client.computers.close(session.id),
+      () => second.client.computers.exec('cs_nonsense', 'true'),
     ])
-      expect(await refusal(attempt)).toEqual([404, 'session_not_found']);
+      expect(await refusal(attempt())).toEqual([404, 'session_not_found']);
     expect(await refusal(capturesOnly.client.computers.exec(session.id, 'true'))).toEqual([403, 'insufficient_scope']);
     // A key that loses the scope can no longer use its sessions.
     await developer.db
