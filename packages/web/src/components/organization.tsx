@@ -47,7 +47,8 @@ import { ToggleGroup, ToggleGroupItem } from '@clutchbox/ui/components/toggle-gr
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ellipsis } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { useShell } from '../deployment.tsx';
 import { api, organizationQuery, type Role } from '../lib/api.ts';
 import { authClient } from '../lib/auth-client.ts';
 import { AppPage } from './app-shell.tsx';
@@ -73,10 +74,17 @@ function useMembers(organizationId: string | undefined) {
 
 // The Organization page: who is in it, with their roles and, for owners and admins, the invitations still waiting;
 // for owners and admins, inviting and join domains; and for anyone, leaving. Creating and joining other organizations
-// is in the switcher, and API keys and Connect apps are on the Developers page.
+// is in the switcher, and API keys and Connect apps are on the Developers page. Where every account is one person, the
+// page has nothing to show, so it goes to the overview.
 export function Organization() {
-  const { data, isError } = useQuery(organizationQuery);
-  const members = useMembers(data?.organization.id);
+  const onePerson = !!useShell().onePerson;
+  const router = useRouter();
+  useEffect(() => {
+    if (onePerson) router.replace('/app');
+  }, [onePerson, router]);
+  const { data, isError } = useQuery({ ...organizationQuery, enabled: !onePerson });
+  const members = useMembers(onePerson ? undefined : data?.organization.id);
+  if (onePerson) return null;
   return (
     <AppPage title="Organization" description={data && `You are ${aRole[data.role]} of ${data.organization.name}.`}>
       {isError && (

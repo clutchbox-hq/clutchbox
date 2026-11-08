@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clut
 import { ToggleGroup, ToggleGroupItem } from '@clutchbox/ui/components/toggle-group';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useShell } from '../deployment.tsx';
 import { api, type ComputerView, computerQuery, grantsQuery } from '../lib/api.ts';
 import { computerStatus, resetsOn, syncedSignIns, usedShare } from '../lib/computer.ts';
 import { lastUser } from './agent-connections.tsx';
@@ -55,6 +56,7 @@ export function YourComputer() {
 }
 
 function ComputerStats({ view }: { view: ComputerView }) {
+  const shell = useShell();
   const { data: grants = [] } = useQuery(grantsQuery);
   const status = computerStatus(view);
   const used = lastUser(grants);
@@ -75,7 +77,13 @@ function ComputerStats({ view }: { view: ComputerView }) {
       : []),
     // On the organization's own provider account, which bills it directly, so no credit applies.
     ...(view.account === 'organization'
-      ? [{ label: 'Runs on', value: "Your organization's own account", note: 'Its provider bills it directly' }]
+      ? [
+          {
+            label: 'Runs on',
+            value: shell.onePerson ? 'Your own account' : "Your organization's own account",
+            note: 'Its provider bills it directly',
+          },
+        ]
       : []),
     used
       ? { label: 'Last used by', value: used.name, note: when(used.at) }

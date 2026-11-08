@@ -22,6 +22,10 @@ export type ShellExtras = {
   chromeWebStoreUrl?: string;
   // A GitHub repository as owner/name, such as 'clutchbox-hq/clutchbox'. With it, the sidebar footer links to it.
   githubRepo?: string;
+  // Every account is one person, in their own organization: the app hides organizations (the switcher and the
+  // Organization page) and words what the organization holds as the person's own. The deployment refuses creating and
+  // joining others on the server.
+  onePerson?: boolean;
 };
 
 // A deployment's web app: its analytics, rendered on every page, and its shell extras.

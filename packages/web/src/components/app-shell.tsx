@@ -74,9 +74,9 @@ const pages: { href: string; label: string; icon: typeof Bot; step?: Step }[] = 
   { href: '/app/agents', label: 'Agents', icon: Bot, step: 'agents' },
   { href: '/app/computer', label: 'Computer', icon: Monitor, step: 'computer' },
 ];
-// Developers is for owners and admins, who are the only ones who can use it.
+// Developers is for owners and admins, who are the only ones who can use it. Organization is hidden for one person.
 const lowerPages = [
-  { href: '/app/organization', label: 'Organization', icon: Users },
+  { href: '/app/organization', label: 'Organization', icon: Users, organizations: true },
   { href: '/app/developers', label: 'Developers', icon: Code, managers: true },
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ];
@@ -189,7 +189,18 @@ function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="p-3">
-        <OrganizationSwitcher onCreated={() => go('/app/organization')} onJoin={() => go('/join')} />
+        {shell.onePerson ? (
+          <Link
+            href="/app"
+            onClick={follow('/app')}
+            className="flex h-11 items-center px-2 font-serif text-xl font-medium italic"
+            aria-label="Clutchbox home page"
+          >
+            clutchbox
+          </Link>
+        ) : (
+          <OrganizationSwitcher onCreated={() => go('/app/organization')} onJoin={() => go('/join')} />
+        )}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -206,7 +217,9 @@ function AppSidebar({
                   badge && <span className="rounded-full px-1.5 text-xs font-normal ring-1 ring-border">{badge}</span>,
                 ),
               )}
-              {lowerPages.filter(page => !page.managers || manager).map(page => item(page))}
+              {lowerPages
+                .filter(page => (!page.managers || manager) && !(page.organizations && shell.onePerson))
+                .map(page => item(page))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
