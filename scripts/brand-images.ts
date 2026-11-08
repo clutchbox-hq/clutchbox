@@ -27,8 +27,9 @@ const style = `
   h1 { font-weight: 500; line-height: 1.02; letter-spacing: -0.02em; }
   .wordmark { font-style: italic; font-weight: 500; line-height: 1; }
   .tagline { line-height: 1.3; color: #a3a3a3; }`;
-const headline = (br: boolean) => `Your agents,${br ? '<br>' : ' '}<i style="white-space:nowrap">already signed in</i>`;
-const tagline = 'Sync your sign-ins to where your agents run';
+const headline = (br: boolean) =>
+  `Your agent’s computer,${br ? '<br>' : ' '}<i style="white-space:nowrap">already signed in as you</i>`;
+const tagline = 'You choose the sites; the extension keeps them signed in on your agent’s computer.';
 
 // The italic c on the black ground. Rounded corners give the tab icons transparency, so they are RGBA as ICO
 // requires; iOS rounds the opaque apple-icon itself and would draw transparent corners black, and GitHub crops avatars.
@@ -64,7 +65,7 @@ export const brandFolder: Record<string, Image> = {
   <p class="wordmark" style="font-size:36px">clutchbox</p>
   <div><h1 style="font-size:104px">${headline(false)}</h1>
   <p class="tagline" style="margin-top:28px;max-width:46ch;font-size:36px">${tagline}</p></div>
-  <p class="tagline" style="font-size:28px">Open source <span style="color:#f9a8d4">→</span> Playwright, browser-use, E2B, any Chrome over CDP</p></div>`,
+  <p class="tagline" style="font-size:28px">Open source <span style="color:#f9a8d4">→</span> Claude Code, Codex, ChatGPT, and Claude</p></div>`,
     size: [1280, 640],
     scale: 2,
   },

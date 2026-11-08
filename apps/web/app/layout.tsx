@@ -23,7 +23,8 @@ const plex = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
   title: 'Clutchbox',
-  description: 'Your agents, already signed in. Sync your sign-ins to where your agents run.',
+  description:
+    'Your agent’s computer, already signed in as you. You choose the sites; the extension keeps them signed in.',
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://www.clutchbox.dev">
-    <img src="brand/readme-demo.gif" alt="An agent asked to catch up on X, an Amazon cart and GitHub reviews opens each site already signed in, using example data." width="100%">
+    <img src="brand/readme-demo.gif" alt="An agent asked to reply to X mentions and save last month's invoices opens X already signed in, posts the replies, and fills a folder with the invoices, using example data." width="100%">
   </a>
 
   <p>
@@ -22,7 +22,7 @@
   </p>
 </div>
 
-**Your agents, already signed in.** You choose the sites, and every agent session opens signed in as you: no passwords typed, no 2FA prompts, no cookie files going stale.
+**Your agent's computer, already signed in as you.** You choose the sites; the extension keeps them signed in on your agent's computer: no passwords typed, no 2FA prompts, no cookie files going stale.
 
 A Chrome extension keeps the sign-ins for the sites you pick in sync, one way, to where your agents run: a hosted computer with Chrome, or your own Playwright, browser-use, Stagehand, or any Chrome over CDP. All of it is open source under Apache-2.0, and you can run the whole product yourself.
 
