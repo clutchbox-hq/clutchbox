@@ -462,8 +462,8 @@ describe('E2B adapter', () => {
       expect.objectContaining({ user: 'user', timeoutMs: 15_000 }),
     );
     // A larger size starts from its own template, since E2B fixes CPUs and memory at build.
-    await e2bComputerProvider('template').create('cm_2', 60_000, '4x');
-    expect(create).toHaveBeenLastCalledWith('template-4x', expect.anything());
+    await e2bComputerProvider('template').create('cm_2', 60_000, '2x');
+    expect(create).toHaveBeenLastCalledWith('template-2x', expect.anything());
   });
   it('sets the clipboard from a file the helper deletes, and removes it when the helper fails (E2B adapter)', async () => {
     const write = vi.fn(async () => ({}));

@@ -383,7 +383,7 @@ function ComputerSummary({ view }: { view: ComputerView }) {
             <div className="h-full rounded-full bg-foreground" style={{ width: `${usedShare(usage)}%` }} />
           </div>
           <p className="text-sm text-muted-foreground tabular-nums">
-            {usage.cost} of {usage.credit} computer credit used this month · resets {resetsOn(usage.resetsAt)}
+            {usage.cost} of {usage.credit} used this month · resets {resetsOn(usage.resetsAt)}
             {usage.estimate && ` · estimated bill ${usage.estimate}`}
           </p>
         </CardContent>

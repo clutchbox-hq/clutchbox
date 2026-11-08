@@ -66,7 +66,7 @@ function ComputerStats({ view }: { view: ComputerView }) {
     ...(usage
       ? [
           {
-            label: 'Computer credit',
+            label: 'Computer time',
             value: `${usage.cost} of ${usage.credit}`,
             note: `Since ${resetsOn(view.period.start)} · renews ${resetsOn(usage.resetsAt)}${usage.estimate ? ` · estimated bill ${usage.estimate}` : ''}`,
             bar: usedShare(usage),

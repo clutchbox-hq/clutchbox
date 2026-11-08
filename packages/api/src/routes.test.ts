@@ -557,11 +557,11 @@ describe('API routes', () => {
       computer: { size: '2x' },
     });
     // Another size resets the caller's computer and its fork, never another user's.
-    const changed = await request('PUT', '/computer/size', { cookie: a, body: { size: '4x' } });
-    expect(await changed.json()).toEqual({ size: '4x', reset: true });
+    const changed = await request('PUT', '/computer/size', { cookie: a, body: { size: '1x' } });
+    expect(await changed.json()).toEqual({ size: '1x', reset: true });
     expect(fake.calls.kill).toBe(2);
     expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
-      size: '4x',
+      size: '1x',
       computer: null,
     });
     expect(await (await request('GET', '/computer', { cookie: b })).json()).toMatchObject({

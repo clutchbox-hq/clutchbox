@@ -23,7 +23,8 @@ export const utcDay = (date: Date) => date.toISOString().slice(0, 10);
 // A member's computer time this billing period against a credit. The hook decides what the credit covers: the member, or their
 // whole organization, and words its amounts where they are shown.
 export type Usage = {
-  // What the month's computer time cost, the credit, and what is left of it, such as "$0.42".
+  // The period's computer time, the credit, and what is left of it, in the deployment's unit, such as "$0.42" or
+  // "312 minutes".
   cost: string;
   credit: string;
   creditLeft: string;

@@ -291,11 +291,11 @@ describe('sizes', () => {
     // The same size changes nothing; another resets main and its fork, and the next open creates it at the new size.
     expect(await setComputerSize(db, { provider: fake.provider }, a, '2x')).toBe(false);
     expect(fake.calls.kill).toBe(0);
-    expect(await setComputerSize(db, { provider: fake.provider }, a, '4x')).toBe(true);
+    expect(await setComputerSize(db, { provider: fake.provider }, a, '1x')).toBe(true);
     expect(fake.calls.kill).toBe(2);
-    expect(await computerView(db, { metering: metering }, a)).toMatchObject({ size: '4x', computer: null });
+    expect(await computerView(db, { metering: metering }, a)).toMatchObject({ size: '1x', computer: null });
     await open(a);
-    expect(fake.calls.sizes).toEqual(['2x', '1x', '4x']);
+    expect(fake.calls.sizes).toEqual(['2x', '1x', '1x']);
     expect(await computerView(db, { metering: metering }, b)).toMatchObject({ size: '1x', computer: { size: '1x' } });
   });
 });
