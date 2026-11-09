@@ -539,6 +539,21 @@ describe('API routes', () => {
     expect((await (await request('GET', '/computer', { cookie: b })).json()).computers).toHaveLength(1);
   });
 
+  it('keeps the deployment’s site rules off a computer made in the app', async () => {
+    vi.stubEnv('CAPTURE_ENCRYPTION_KEY', randomBytes(32).toString('base64'));
+    const request = client(fake.provider, {
+      hooks: {
+        metering: noMetering,
+        operatorAdmin: noOperatorAdmin,
+        siteRules: [{ site: 'example.com', keepOut: ['sid'] }],
+      },
+    });
+    const a = await identity('a');
+    await saveFromBrowser(db, await member('a'), bundle([cookie(), cookie({ name: 'remember' })]));
+    expect((await request('POST', '/computer/computers', { cookie: a, body: {} })).status).toBe(201);
+    expect([...fake.sandboxes.values()].at(-1)?.cookies.map(({ name }) => name)).toEqual(['remember']);
+  });
+
   it('New computer makes a paused computer with no agent, confirming what it replaces at the limit', async () => {
     const limited = new Map<string, number>();
     const request = client(fake.provider, {

@@ -187,7 +187,7 @@ export function createApi({
   apiOrigin?: string;
   computers: ComputerProvider;
   hooks?: Pick<ServerHooks, 'metering' | 'operatorAdmin'> &
-    Partial<Pick<ServerHooks, 'limits' | 'providerAccount'>> & { tenancy?: Pick<Tenancy, 'canCreate'> };
+    Partial<Pick<ServerHooks, 'limits' | 'providerAccount' | 'siteRules'>> & { tenancy?: Pick<Tenancy, 'canCreate'> };
   // The extension build this deployment offers for download.
   extensionVersion?: string | undefined;
   minExtensionVersion?: string;
@@ -196,8 +196,14 @@ export function createApi({
   extend?: ApiExtension;
 }) {
   const latest = extensionVersion ? { latestVersion: extensionVersion } : {};
-  const { metering, operatorAdmin, tenancy, limits = noLimits, providerAccount } = hooks;
-  const running = { provider: computers, metering, limits, ...(providerAccount && { accounts: providerAccount }) };
+  const { metering, operatorAdmin, tenancy, limits = noLimits, providerAccount, siteRules = [] } = hooks;
+  const running = {
+    provider: computers,
+    metering,
+    limits,
+    siteRules,
+    ...(providerAccount && { accounts: providerAccount }),
+  };
   // The member a request acts as: for a sync token, in the organization it names (or the browser's, for a build that
   // names none), or for app auth the person's current one (organizations.ts). A person in no organization here yet
   // gets not_a_member, which our web app answers with its join page, and which tells the extension the person has left

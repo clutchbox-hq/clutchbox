@@ -2,8 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadCatalog } from '../src/load.ts';
 
-// Writes src/catalog.generated.json from the repository's recipes/ and sites/compatibility.json, or with --check, fails
-// when it differs from them. The web apps import that JSON, so they never read files at runtime.
+// Writes src/catalog.generated.json from the repository's recipes/, or with --check, fails when it differs from them. The web apps import that JSON, so they never read files at runtime.
 //
 //   generate-recipes [--check]
 

@@ -1,7 +1,7 @@
 {
   "name": "@clutchbox/recipes",
   "version": "0.1.0",
-  "description": "Recipes for AI agents on a computer signed in as you, and which sites keep a synced sign-in, from the repository's recipes/ and sites/.",
+  "description": "Recipes for AI agents on a computer signed in as you.",
   "keywords": [
     "ai-agents",
     "recipes",

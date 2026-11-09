@@ -598,6 +598,26 @@ describe('computer tools', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
       }),
     ).then(rpc);
+  it('keeps the deployment’s site rules off a computer an agent opens', async () => {
+    const fake = fakeComputerProvider();
+    vi.stubEnv('CAPTURE_ENCRYPTION_KEY', randomBytes(32).toString('base64'));
+    endpoint = createMcpEndpoint({
+      db,
+      auth,
+      origin,
+      computers: fake.provider,
+      hooks: {
+        metering: noMetering,
+        operatorAdmin: noOperatorAdmin,
+        siteRules: [{ site: 'example.com', keepOut: ['sid'] }],
+      },
+    });
+    const a = await identity('a');
+    const claude = (await authorize(a.cookie, await register()))!;
+    await saveFromBrowser(db, await member(a.id), bundle([cookie(), cookie({ name: 'remember' })]));
+    await tool(claude.access_token, 'computer_open', {});
+    expect([...fake.sandboxes.values()].at(-1)?.cookies.map(({ name }) => name)).toEqual(['remember']);
+  });
   it('opens a computer per agent, runs every tool in its session, and reopens and lists computers', async () => {
     const fake = fakeComputerProvider();
     vi.stubEnv('CAPTURE_ENCRYPTION_KEY', randomBytes(32).toString('base64'));

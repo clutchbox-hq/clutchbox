@@ -1,6 +1,6 @@
 'use client';
 import { siteName } from '@clutchbox/capture/sites';
-import { type Recipe, shippedRecipes, sourceUrl, USE_CASES } from '@clutchbox/recipes';
+import { recipes as allRecipes, type Recipe, sourceUrl, USE_CASES } from '@clutchbox/recipes';
 import { Badge } from '@clutchbox/ui/components/badge';
 import { Button, buttonVariants } from '@clutchbox/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
@@ -14,21 +14,26 @@ import {
 } from '@clutchbox/ui/components/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@clutchbox/ui/components/tabs';
 import { Check } from 'lucide-react';
+import { useShell } from '../deployment.tsx';
 import type { SetupView } from '../lib/api.ts';
 import { missingSites } from '../lib/setup.ts';
 import { CopyButton } from './copy-button.tsx';
 import { scheduleSteps } from './recipe-steps.tsx';
 
-// Whether any recipe ships yet (its sites all work on a computer, by the recorded results). Until one does, the
-// overview keeps its generic prompts instead of an empty gallery.
-export const hasRecipes = shippedRecipes.length > 0;
+// The recipes this deployment offers (ShellExtras.recipes). With none, the overview keeps its generic prompts instead
+// of an empty gallery.
+export function useOfferedRecipes(): readonly Recipe[] {
+  const { recipes: slugs } = useShell();
+  return slugs ? allRecipes.filter(recipe => slugs.includes(recipe.slug)) : allRecipes;
+}
 
-// The recipes that ship, by use case: each names its sites and whether the user syncs them yet, with its prompt to
+// The recipes on offer, by use case: each names its sites and whether the user syncs them yet, with its prompt to
 // copy and the steps to run it on the agent's own schedule. Shown where setup ends and on the overview after it.
 export function RecipeGallery({ sync, mcpUrl }: { sync: SetupView['sync']; mcpUrl: string }) {
+  const offered = useOfferedRecipes();
   const groups = USE_CASES.map(useCase => ({
     ...useCase,
-    recipes: shippedRecipes.filter(recipe => recipe.useCase === useCase.key),
+    recipes: offered.filter(recipe => recipe.useCase === useCase.key),
   })).filter(group => group.recipes.length);
   // Open on the use case with the most recipes the user can run now.
   const ready = (recipes: readonly Recipe[]) =>

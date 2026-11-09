@@ -1,4 +1,4 @@
-import { type Recipe, recipe, recipeFrontmatter, type SiteResult } from './schema.ts';
+import { type Recipe, recipe, recipeFrontmatter } from './schema.ts';
 
 // Reads one recipe file: front matter in a small subset of YAML, then a Prompt section holding one fenced block and an
 // optional Notes section of bullets (recipes/README.md). Throws with the file's name and what's wrong.
@@ -90,8 +90,3 @@ function bullets(lines: string[]) {
   }
   return items;
 }
-
-// A recipe ships (shows in the web app's gallery, and gets a public page) only when every site it uses works on a
-// computer, by the recorded results.
-export const ships = (candidate: Pick<Recipe, 'sites'>, sites: readonly SiteResult[]) =>
-  candidate.sites.every(site => sites.find(result => result.site === site)?.status === 'works');

@@ -26,7 +26,7 @@ import { promptsFor } from '../lib/setup.ts';
 import { connectedAgents, lastUser } from './agent-connections.tsx';
 import { AppPage, useAppUser } from './app-shell.tsx';
 import { CopyButton } from './copy-button.tsx';
-import { hasRecipes, RecipeGallery } from './recipe-gallery.tsx';
+import { RecipeGallery, useOfferedRecipes } from './recipe-gallery.tsx';
 import { SetupNotice } from './setup-notice.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -61,6 +61,7 @@ export function Overview({ mcpUrl }: { mcpUrl: string }) {
 }
 
 function Checklist({ setup, first, mcpUrl }: { setup: SetupView; first: string | undefined; mcpUrl: string }) {
+  const hasRecipes = useOfferedRecipes().length > 0;
   const { data: grants = [] } = useQuery(grantsQuery);
   const { items, sync } = setup;
   const steps = [items.browserSync, items.agents, items.computer];
@@ -238,6 +239,7 @@ function More({ href, children }: { href: string; children: ReactNode }) {
 }
 
 function Status({ setup, first, mcpUrl }: { setup: SetupView | undefined; first: string | undefined; mcpUrl: string }) {
+  const hasRecipes = useOfferedRecipes().length > 0;
   const { data: view } = useQuery(computerQuery);
   const { data: grants = [] } = useQuery(grantsQuery);
   const { data: syncView } = useQuery(syncQuery);

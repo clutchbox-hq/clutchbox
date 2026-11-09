@@ -4,7 +4,7 @@ labels: [site-compatibility]
 body:
   - type: markdown
     attributes:
-      value: Issues are public. Never paste cookie values or tokens; the site name and what happened are enough. Results are recorded in sites/compatibility.json.
+      value: Issues are public. Never paste cookie values or tokens; the site name and what happened are enough.
   - type: input
     attributes:
       label: Site

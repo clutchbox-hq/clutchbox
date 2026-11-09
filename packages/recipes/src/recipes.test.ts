@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { recipes, shippedRecipes, siteResults } from './index.ts';
+import { recipes } from './index.ts';
 import { loadCatalog } from './load.ts';
-import { parseRecipe, ships } from './parse.ts';
+import { parseRecipe } from './parse.ts';
 
 const file = (frontmatter: string, body: string) => `---\n${frontmatter}\n---\n\n${body}`;
 const frontmatter = [
@@ -53,22 +53,10 @@ describe('parseRecipe', () => {
 });
 
 describe('the recipes in this repository', () => {
-  it('all parse, name known sites, and match the generated catalog', () => {
+  it('all parse and match the generated catalog', () => {
     const catalog = loadCatalog();
     expect(catalog.recipes.length).toBeGreaterThan(0);
     expect(new Set(catalog.recipes.map(recipe => recipe.slug)).size).toBe(catalog.recipes.length);
     expect(recipes).toEqual(catalog.recipes);
-    expect(siteResults).toEqual(catalog.sites);
-  });
-
-  it('ship only when every site they use works', () => {
-    const works = [
-      { site: 'x.com', name: 'X', status: 'works' as const, checked: '2026-11-01' },
-      { site: 'threads.com', name: 'Threads', status: 'partial' as const, checked: '2026-11-01' },
-    ];
-    expect(ships({ sites: ['x.com'] }, works)).toBe(true);
-    expect(ships({ sites: ['x.com', 'threads.com'] }, works)).toBe(false);
-    expect(ships({ sites: ['example.com'] }, works)).toBe(false);
-    expect(shippedRecipes).toEqual(recipes.filter(recipe => ships(recipe, siteResults)));
   });
 });

@@ -58,6 +58,7 @@ import { logError } from './log.ts';
 import type { Member } from './organizations.ts';
 import * as schema from './schema.ts';
 import type { Owner } from './sealing.ts';
+import { type SiteRule, withoutKeptOut } from './site-rules.ts';
 import { markToolStep } from './tool-calls.ts';
 
 // Each member (a person in one organization) has up to their cap of computers (Computers, below), each made from the
@@ -147,6 +148,7 @@ export type Computers = {
   accounts?: ServerHooks['providerAccount'];
   metering: Metering;
   limits?: Limits;
+  siteRules?: readonly SiteRule[];
 };
 // Just the providers, for what needs no metering.
 export type Providers = Pick<Computers, 'provider' | 'accounts'>;
@@ -635,7 +637,7 @@ export async function openComputerSession(
     // Before the apply, which needs the browser this may restart.
     await refreshComputer(db, computers.provider, computer, handle.session);
     const [sync] = await Promise.all([
-      applyProfiles(db, caller, computer, handle.session, started.profile, profiles, deadline),
+      applyProfiles(db, computers, caller, computer, handle.session, started.profile, profiles, deadline),
       // A new computer starts at the member's choice.
       started.created && chosenScreen(db, caller).then(chosen => applyScreen(handle.session, chosen)),
     ]);
@@ -1435,19 +1437,19 @@ export async function createPausedComputer(
 // profile's latest capture. A failure leaves it for the next open to retry, like an apply that fails on computer_open.
 async function applyNewComputer(
   db: Database,
-  { provider }: InOrganization,
+  computers: InOrganization,
   member: Member,
   computer: Pick<ComputerRow, 'id' | 'publicId' | 'revision'>,
   sandboxId: string,
 ) {
   try {
     const deadline = Date.now() + SYNC_DEADLINE_MS;
-    const session = await provider.connect(sandboxId, CALL_HOLD_MS);
-    await refreshComputer(db, provider, computer, session);
+    const session = await computers.provider.connect(sandboxId, CALL_HOLD_MS);
+    await refreshComputer(db, computers.provider, computer, session);
     const profiles = await listProfiles(db, member);
     await Promise.all([
       chosenScreen(db, member).then(screen => applyScreen(session, screen)),
-      applyProfiles(db, member, computer, session, profiles[0] ?? null, profiles, deadline),
+      applyProfiles(db, computers, member, computer, session, profiles[0] ?? null, profiles, deadline),
     ]);
   } catch (error) {
     logError('new computer apply', error);
@@ -1547,6 +1549,7 @@ async function switchProfile(session: ComputerSession, chromeProfile: string, de
 // browser's languages and latest capture. The summary is that apply's, or without a profile, the sign-outs'.
 async function applyProfiles(
   db: Database,
+  computers: Pick<Computers, 'siteRules'>,
   member: Owner,
   computer: Pick<ComputerRow, 'id' | 'publicId'>,
   session: ComputerSession,
@@ -1581,11 +1584,12 @@ async function applyProfiles(
   await switchProfile(session, row.chromeProfile, deadline);
   await applyLanguages(db, row, session, profile.browserId, deadline);
   await applyPlatform(db, row, session, profile.browserId, deadline);
-  return applyLatestCapture(db, member, computer, row, profile.browserId, session, deadline);
+  return applyLatestCapture(db, computers, member, computer, row, profile.browserId, session, deadline);
 }
 // Live view's apply, on a computer no agent is working on: to the profile a session there would get (pickProfile).
 async function applyForLiveView(
   db: Database,
+  computers: Pick<Computers, 'siteRules'>,
   member: Owner,
   computer: Pick<ComputerRow, 'id' | 'publicId'>,
   session: ComputerSession,
@@ -1593,7 +1597,7 @@ async function applyForLiveView(
 ) {
   const profiles = await listProfiles(db, member);
   const profile = await pickProfile(db, computer.id, { named: undefined, profiles });
-  return applyProfiles(db, member, computer, session, profile, profiles, deadline);
+  return applyProfiles(db, computers, member, computer, session, profile, profiles, deadline);
 }
 
 // The last applied capture's cookies; null without one or when it cannot be opened (the next apply is wholesale).
@@ -1629,6 +1633,7 @@ const sameBaseline = (row: Pick<ProfileRow, 'id' | 'appliedCaptureDigest'>) =>
 // the rest. Without a baseline each target site is replaced wholesale. A failure never blocks the open or close.
 async function applyLatestCapture(
   db: Database,
+  { siteRules = [] }: Pick<Computers, 'siteRules'>,
   member: Owner,
   computer: Pick<ComputerRow, 'publicId'>,
   profile: Pick<ProfileRow, 'id' | 'chromeProfile'>,
@@ -1650,9 +1655,10 @@ async function applyLatestCapture(
     if (budget < SYNC_MIN_MS) throw new Error('no time left');
     const loaded = await loadLatestCapture(db, member, browser);
     if (!loaded) return await clearSyncedSites(db, row, session, deadline);
+    const cookies = withoutKeptOut(loaded.capture.cookies, siteRules);
     const changes = cookieChanges(
       baselineOf(row.appliedCapture, member, computer.publicId),
-      loaded.capture.cookies,
+      cookies,
       row.syncedSites,
       loaded.completedAt,
     );
@@ -1661,7 +1667,7 @@ async function applyLatestCapture(
       ...changes.set.map(siteOfCookie),
       ...changes.remove.map(siteOfCookie),
     ]);
-    const next = [...new Set(loaded.capture.cookies.map(siteOfCookie))].sort();
+    const next = [...new Set(cookies.map(siteOfCookie))].sort();
     if (sites.size) {
       targetSites = next;
       await withinBudget(
@@ -1681,11 +1687,7 @@ async function applyLatestCapture(
         appliedCaptureDigest: loaded.digest,
         appliedCaptureAt: new Date(loaded.completedAt),
         syncedSites: next,
-        appliedCapture: sealAppliedCapture(
-          { completedAt: loaded.completedAt, cookies: loaded.capture.cookies },
-          member,
-          computer.publicId,
-        ),
+        appliedCapture: sealAppliedCapture({ completedAt: loaded.completedAt, cookies }, member, computer.publicId),
         updatedAt: new Date(),
       })
       .where(sameBaseline(row))
@@ -2232,7 +2234,7 @@ export async function takeOverComputer(
     try {
       // As computer_open does: before the apply, which needs the browser this may restart.
       await refreshComputer(db, provider, row, started.session);
-      await applyForLiveView(db, member, row, started.session, deadline);
+      await applyForLiveView(db, computers, member, row, started.session, deadline);
     } catch (error) {
       // The computer is unreachable: give the takeover back rather than hold a computer nobody can use.
       await handBackComputer(db, computers, member, lease, target).catch(endError =>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// What a recipe file (recipes/<slug>.md) and the site results (sites/compatibility.json) may hold. The generator
+// What a recipe file (recipes/<slug>.md) may hold. The generator
 // (scripts/generate.ts) checks every file against these, so a contributor learns what's wrong before review.
 
 export const USE_CASES = [
@@ -51,19 +51,3 @@ export const recipe = recipeFrontmatter.extend({
   notes: z.array(z.string().min(1)),
 });
 export type Recipe = z.infer<typeof recipe>;
-
-export const SITE_STATUSES = ['works', 'partial', 'fails', 'untested'] as const;
-export const siteResult = z
-  .object({
-    site: domain,
-    name: z.string().min(1),
-    status: z.enum(SITE_STATUSES),
-    // The date of the check, if there was one.
-    checked: z.iso.date().optional(),
-    held: z.string().min(1).optional(),
-    notes: z.string().min(1).optional(),
-  })
-  .strict()
-  .refine(result => result.status === 'untested' || result.checked, 'a checked site says when (checked)');
-export type SiteResult = z.infer<typeof siteResult>;
-export const compatibility = z.object({ $comment: z.string().optional(), sites: z.array(siteResult) }).strict();

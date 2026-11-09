@@ -555,7 +555,8 @@ export function createMcpEndpoint({
   origin: string;
   apiOrigin?: string;
   computers: ComputerProvider;
-  hooks?: Pick<ServerHooks, 'metering' | 'operatorAdmin'> & Partial<Pick<ServerHooks, 'limits' | 'providerAccount'>>;
+  hooks?: Pick<ServerHooks, 'metering' | 'operatorAdmin'> &
+    Partial<Pick<ServerHooks, 'limits' | 'providerAccount' | 'siteRules'>>;
 }) {
   const resource = `${apiOrigin}/api/mcp`;
   const serve = (request: Request, principal: McpPrincipal, member: Member) =>
@@ -573,6 +574,7 @@ export function createMcpEndpoint({
             provider: computers,
             metering: hooks.metering,
             ...(hooks.limits && { limits: hooks.limits }),
+            ...(hooks.siteRules && { siteRules: hooks.siteRules }),
             ...(hooks.providerAccount && { accounts: hooks.providerAccount }),
           },
           origin,

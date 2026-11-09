@@ -37,6 +37,7 @@
     "./cdp-relay": "./src/cdp-relay.ts",
     "./shutdown": "./src/shutdown.ts",
     "./hooks": "./src/hooks.ts",
+    "./site-rules": "./src/site-rules.ts",
     "./members": "./src/members.ts",
     "./api-keys": "./src/api-keys.ts",
     "./connect": "./src/connect.ts",

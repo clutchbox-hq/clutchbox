@@ -1306,6 +1306,26 @@ describe('apply on open', () => {
     secure: true,
     httpOnly: true,
   });
+  it('keeps a site rule’s cookies off the computer, and never touches the computer’s own', async () => {
+    computers = { ...computers, siteRules: [{ site: 'example.com', keepOut: ['sid'] }] };
+    const a = await user('a');
+    await reopen(a);
+    await saveFromBrowser(db, a, bundle([cookie(), cookie({ name: 'remember' })], new Date('2026-10-15T10:00:00Z')));
+    await reopen(a);
+    expect(jar()).toEqual(['example.com:remember=local']);
+    // The site signs the computer in itself, then the browser's own session rotates and syncs.
+    sandbox().cookies.push(computerCookie('sid', 'computer'));
+    await saveFromBrowser(
+      db,
+      a,
+      bundle(
+        [cookie({ value: 'rotated' }), cookie({ name: 'remember', value: 'rotated' })],
+        new Date('2026-10-15T11:00:00Z'),
+      ),
+    );
+    await reopen(a);
+    expect(jar()).toEqual(['example.com:remember=rotated', 'example.com:sid=computer']);
+  });
   it('applies a new capture once, keeps agent-only sites, and clears sites signed out locally', async () => {
     const a = await user('a');
     expect((await reopen(a)).sync).toEqual({ status: 'none' });

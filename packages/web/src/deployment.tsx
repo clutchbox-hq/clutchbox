@@ -26,6 +26,8 @@ export type ShellExtras = {
   // Organization page) and words what the organization holds as the person's own. The deployment refuses creating and
   // joining others on the server.
   onePerson?: boolean;
+  // The slugs of the recipes it offers. Without it, the app offers every recipe.
+  recipes?: string[];
 };
 
 // A deployment's web app: its analytics, rendered on every page, and its shell extras.
