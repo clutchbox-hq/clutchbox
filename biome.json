@@ -8,7 +8,6 @@
   "files": {
     "includes": [
       "**",
-      "!.agents",
       "!.claude",
       "!**/next-env.d.ts",
       "!packages/server/migrations/meta",
