@@ -90,19 +90,24 @@ it('keeps every computer signed in as its first profile, owned by the browser th
     syncedSites: ['example.com'],
     appliedCapture: `baseline-${membershipId}`,
   });
+  // By SQL: the columns for forks and snapshots are no longer in the schema, though the data this migration moves had them.
   const computer = async (membershipId: number, forkOf: number | null = null) => {
-    const [row] = await db
-      .insert(schema.computers)
-      .values({
-        publicId: newPublicId('computer'),
+    const state = applied(membershipId);
+    const { rows } = await pg.query<{ id: string }>(
+      `INSERT INTO computers (public_id, membership_id, fork_of, status, last_used_at, applied_capture_digest, applied_capture_at, synced_sites, applied_capture)
+       VALUES ($1, $2, $3, 'ready', $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        newPublicId('computer'),
         membershipId,
         forkOf,
-        status: 'ready',
-        lastUsedAt: forkOf ? at(20) : null,
-        ...applied(membershipId),
-      })
-      .returning({ id: schema.computers.id });
-    return row!.id;
+        forkOf ? at(20) : null,
+        state.appliedCaptureDigest,
+        state.appliedCaptureAt,
+        state.syncedSites,
+        state.appliedCapture,
+      ],
+    );
+    return Number(rows[0]!.id);
   };
   // Two browsers, the capture from the one that synced first; main, a snapshot of it, and a fork.
   const a = await person(db, 'a');
@@ -110,10 +115,12 @@ it('keeps every computer signed in as its first profile, owned by the browser th
   await browser(a.membershipId, 'later', at(30));
   await capture(a.membershipId, sender);
   const main = await computer(a.membershipId);
-  const [snapshot] = await db
-    .insert(schema.computerSnapshots)
-    .values({ computerId: main, providerSnapshotId: 'snapshot-a', ...applied(a.membershipId) })
-    .returning({ id: schema.computerSnapshots.id });
+  const state = applied(a.membershipId);
+  const { rows: snapshots } = await pg.query<{ id: string }>(
+    `INSERT INTO computer_snapshots (computer_id, provider_snapshot_id, applied_capture_digest, applied_capture_at, synced_sites, applied_capture)
+     VALUES ($1, 'snapshot-a', $2, $3, $4, $5) RETURNING id`,
+    [main, state.appliedCaptureDigest, state.appliedCaptureAt, state.syncedSites, state.appliedCapture],
+  );
   const fork = await computer(a.membershipId, main);
   // A capture from before browsers were recorded: the most recently synced browser that still syncs gets it.
   const b = await person(db, 'b');
@@ -153,10 +160,14 @@ it('keeps every computer signed in as its first profile, owned by the browser th
     ...applied(membershipId),
   });
   expect(profiles).toMatchObject([
-    { computerId: main, snapshotId: null, connectedBrowserId: sender, ...first(a.membershipId) },
+    { computerId: main, connectedBrowserId: sender, ...first(a.membershipId) },
     { computerId: fork, connectedBrowserId: sender, ...first(a.membershipId) },
     { computerId: bComputer, connectedBrowserId: current, ...first(b.membershipId) },
     { computerId: cComputer, connectedBrowserId: removed, ...first(c.membershipId) },
-    { computerId: null, snapshotId: snapshot!.id, connectedBrowserId: sender, ...first(a.membershipId) },
+    { computerId: null, connectedBrowserId: sender, ...first(a.membershipId) },
   ]);
+  const { rows: fromSnapshot } = await pg.query<{ snapshot_id: string }>(
+    'SELECT snapshot_id FROM computer_profiles WHERE snapshot_id IS NOT NULL',
+  );
+  expect(fromSnapshot.map(row => Number(row.snapshot_id))).toEqual([Number(snapshots[0]!.id)]);
 });

@@ -11,7 +11,6 @@ const refusals: Record<string, string> = {
   organization_limit: 'You have created as many organizations as you can.',
   api_key_limit: 'This organization has as many API keys as it can. Delete one first.',
   connect_app_limit: 'This organization has as many Connect apps as it can. Delete one first.',
-  pinned_fork_limit: 'You have pinned as many computers as you can. Unpin one first.',
   invalid_redirect_uri: 'Each redirect URI must be a full https address (http only on localhost), without a #fragment.',
   public_email_domain:
     'Anyone can get an address at that domain, so it cannot let people join. Use your own domain, or invite people by email.',

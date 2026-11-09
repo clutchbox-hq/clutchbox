@@ -43,29 +43,12 @@ type FakeSandbox = {
   clipboard?: ClipboardContent;
   // The helper revision it runs: the provider's when it was created, like a current template.
   revision: string;
-  // The snapshot it was made from, for a fork.
-  snapshotId?: string;
   // The screen's size, and the desktop's, which the screen can't outgrow: the largest screen's, or for a computer
   // from before screen sizes, its 1280x800.
   screen: Size;
   desktop: Size;
 };
 type Size = { width: number; height: number };
-// What a snapshot keeps of its computer: the browser's state and the system's.
-type FakeSnapshot = Pick<
-  FakeSandbox,
-  | 'tabs'
-  | 'profile'
-  | 'cookies'
-  | 'profiles'
-  | 'revision'
-  | 'timeZone'
-  | 'languages'
-  | 'platforms'
-  | 'public'
-  | 'screen'
-  | 'desktop'
->;
 // A PNG's signature and header chunk, all of a screenshot that pngSize reads.
 const fakePng = ({ width, height }: Size) => {
   const png = new Uint8Array(33);
@@ -80,14 +63,10 @@ const fakePng = ({ width, height }: Size) => {
 // `account` prefixes its IDs, so two fakes, as two provider accounts, never share one.
 export function fakeComputerProvider({ account = '' }: { account?: string } = {}) {
   const sandboxes = new Map<string, FakeSandbox>();
-  const snapshots = new Map<string, FakeSnapshot>();
-  // Every computer made, for its ID; calls.create counts those from the template, calls.fork those from a snapshot.
+  // Every computer made, for its ID.
   let made = 0;
   const calls = {
     create: 0,
-    fork: 0,
-    snapshot: 0,
-    deleteSnapshot: 0,
     kill: 0,
     sync: 0,
     pause: 0,
@@ -124,9 +103,7 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
   let screenFails = false;
   let refreshFails = false;
   let clipboardFails = false;
-  let snapshotFails = false;
   let useProfileFails = false;
-  let createFromSnapshotFails = false;
   // Where stream() points: a test's own WebSocket server for relay tests.
   let streamUrl = 'wss://stream.example.test/';
   // Where cdpEndpoint() points: a test's own WebSocket server standing in for Chrome.
@@ -166,68 +143,6 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
         desktop: { ...SCREENS['1920x1200'] },
       });
       return id;
-    },
-    async createFromSnapshot(snapshotId, computerId, timeoutMs) {
-      calls.fork++;
-      calls.timeouts.push(timeoutMs);
-      if (createFromSnapshotFails) throw new Error('createFromSnapshot failed in fake');
-      const snapshot = snapshots.get(snapshotId);
-      if (!snapshot) throw new Error('snapshot not found');
-      const id = `${account}sandbox-${++made}`;
-      sandboxes.set(id, {
-        ...structuredClone(snapshot),
-        computerId,
-        snapshotId,
-        actions: [],
-        paused: false,
-      });
-      return id;
-    },
-    async snapshot(sandboxId, timeoutMs) {
-      calls.snapshot++;
-      calls.timeouts.push(timeoutMs);
-      const sandbox = sandboxes.get(sandboxId);
-      if (!sandbox) throw new Error('sandbox not found');
-      if (snapshotFails) throw new Error('snapshot failed in fake');
-      // Like E2B: a paused computer is resumed to take it.
-      sandbox.paused = false;
-      const id = `${account}snapshot-${calls.snapshot}`;
-      const {
-        tabs,
-        profile,
-        cookies,
-        profiles,
-        revision: helpers,
-        timeZone,
-        languages,
-        platforms,
-        public: open,
-        screen,
-        desktop,
-      } = sandbox;
-      snapshots.set(
-        id,
-        structuredClone({
-          tabs,
-          profile,
-          cookies,
-          profiles,
-          revision: helpers,
-          screen,
-          desktop,
-          ...(timeZone ? { timeZone } : {}),
-          ...(languages ? { languages } : {}),
-          ...(platforms ? { platforms } : {}),
-          ...(open ? { public: open } : {}),
-        }),
-      );
-      return id;
-    },
-    async deleteSnapshot(snapshotId) {
-      calls.deleteSnapshot++;
-      if ([...sandboxes.values()].some(sandbox => sandbox.snapshotId === snapshotId))
-        throw new Error('snapshot in use in fake');
-      snapshots.delete(snapshotId);
     },
     async connect(sandboxId, timeoutMs) {
       calls.timeouts.push(timeoutMs);
@@ -365,7 +280,6 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
   return {
     provider,
     sandboxes,
-    snapshots,
     calls,
     slowCreate: (ms: number) => {
       createDelayMs = ms;
@@ -398,14 +312,8 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
     failClipboard: (fails = true) => {
       clipboardFails = fails;
     },
-    failSnapshot: (fails = true) => {
-      snapshotFails = fails;
-    },
     failUseProfile: (fails = true) => {
       useProfileFails = fails;
-    },
-    failCreateFromSnapshot: (fails = true) => {
-      createFromSnapshotFails = fails;
     },
     setStreamUrl: (url: string) => {
       streamUrl = url;

@@ -32,7 +32,6 @@ import {
   PROVIDER_REQUEST_MS,
   REFRESH_STEP_MS,
   SCREEN_MS,
-  SNAPSHOT_REQUEST_MS,
   STREAM_MARGIN_MS,
   STREAM_START_MS,
   SYNC_CDP_CONNECT_MS,
@@ -1134,22 +1133,6 @@ export function e2bComputerProvider(
       }
       return sandbox.sandboxId;
     },
-    // A snapshot is a template to E2B, with the source's CPUs and memory. Its memory holds the running desktop and
-    // Chrome, so there is nothing to start.
-    // The options replace the source's metadata, so a lookup by the source's computerId never finds a fork.
-    async createFromSnapshot(snapshotId, computerId, timeoutMs) {
-      return (await BaseSandbox.create(snapshotId, { ...account, ...createOptions(computerId, timeoutMs) })).sandboxId;
-    },
-    // E2B snapshots only a running sandbox (a paused one answers 404), so connect first, which resumes a paused one.
-    async snapshot(sandboxId, timeoutMs) {
-      await BaseSandbox.connect(sandboxId, { ...account, timeoutMs, requestTimeoutMs: SNAPSHOT_REQUEST_MS });
-      return (await BaseSandbox.createSnapshot(sandboxId, { ...account, requestTimeoutMs: SNAPSHOT_REQUEST_MS }))
-        .snapshotId;
-    },
-    async deleteSnapshot(snapshotId) {
-      // False: already gone. E2B refuses (400) while a computer made from the snapshot remains.
-      await BaseSandbox.deleteSnapshot(snapshotId, { ...account, requestTimeoutMs: PROVIDER_REQUEST_MS });
-    },
     async connect(sandboxId, timeoutMs) {
       // Connecting resumes a paused computer; on a running one it only extends the timeout.
       return session(await Sandbox.connect(sandboxId, { ...account, timeoutMs }));
@@ -1173,10 +1156,6 @@ export function e2bComputerProvider(
     ...provider,
     find: computerId => provider.find(computerId).catch(refused),
     create: (computerId, timeoutMs, size) => provider.create(computerId, timeoutMs, size).catch(refused),
-    createFromSnapshot: (snapshotId, computerId, timeoutMs) =>
-      provider.createFromSnapshot(snapshotId, computerId, timeoutMs).catch(refused),
-    snapshot: (sandboxId, timeoutMs) => provider.snapshot(sandboxId, timeoutMs).catch(refused),
-    deleteSnapshot: snapshotId => provider.deleteSnapshot(snapshotId).catch(refused),
     connect: (sandboxId, timeoutMs) => provider.connect(sandboxId, timeoutMs).catch(refused),
     pause: sandboxId => provider.pause(sandboxId).catch(refused),
     setTimeout: (sandboxId, timeoutMs) => provider.setTimeout(sandboxId, timeoutMs).catch(refused),

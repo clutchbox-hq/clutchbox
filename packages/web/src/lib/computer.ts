@@ -13,29 +13,22 @@ const count = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1
 export const periodUse = ({ period }: ComputerView) =>
   `${count(period.minutes, 'computer minute')} · ${count(period.mcpCalls, 'MCP call')} since ${resetsOn(period.start)}`;
 
-// What the computer is doing, for the sidebar, the overview, and the Computer page.
+// What the member's computers are doing, for the sidebar, the overview, and the Computer page.
 export function computerStatus(view: ComputerView) {
-  const { computer } = view;
-  if (!computer)
-    return { short: 'Not started', note: 'It starts the first time an agent opens it.', dot: 'bg-muted-foreground' };
-  if (computer.inLiveView)
+  const { computers } = view;
+  if (!computers.length)
+    return { short: 'None yet', note: 'One is made when an agent starts a task.', dot: 'bg-muted-foreground' };
+  const working = computers.filter(computer => computer.status === 'in_use').length;
+  if (working)
     return {
-      short: 'In live view',
-      note: "You're in control. Agents keep working on their own computers.",
+      short: 'In use',
+      note: `${count(working, 'computer')} in use, of ${computers.length.toLocaleString()}.`,
       dot: 'bg-brand',
     };
-  if (computer.busy)
-    return { short: 'In use', note: 'An agent is working on a copy of your computer right now.', dot: 'bg-brand' };
-  if (computer.status === 'ready') return { short: 'Ready', note: periodUse(view), dot: 'bg-foreground' };
-  return { short: 'Starting', note: 'Your computer is starting.', dot: 'bg-muted-foreground' };
+  return { short: 'Ready', note: periodUse(view), dot: 'bg-foreground' };
 }
 
-// When synced sign-ins were copied, and whether the computer has that copy yet.
-export function syncedSignIns({ capture, computer }: ComputerView) {
-  if (!capture) return null;
-  const applied = computer?.appliedCaptureAt;
-  return {
-    copiedAt: capture.completedAt,
-    applied: !!applied && Date.parse(applied) >= Date.parse(capture.completedAt),
-  };
+// When the member's sign-ins were last copied, which every computer gets each time it opens.
+export function syncedSignIns({ capture }: ComputerView) {
+  return capture && { copiedAt: capture.completedAt };
 }

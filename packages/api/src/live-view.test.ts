@@ -18,6 +18,7 @@ import type { Database } from '../../server/src/database.ts';
 import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
 import { heartbeat } from '../../server/src/heartbeat.ts';
 import { noMetering } from '../../server/src/hooks.ts';
+import { newPublicId } from '../../server/src/ids.ts';
 import { readLiveViewTicket, signLiveViewTicket } from '../../server/src/live-view-ticket.ts';
 import { inTheOrganization } from '../../server/src/member-fixtures.ts';
 import { currentMember } from '../../server/src/organizations.ts';
@@ -56,20 +57,16 @@ async function identity(id: string) {
   return {
     cookie: `${(await auth.$context).authCookies.sessionToken.name}=${encodeURIComponent(`${token}.${signature}`)}`,
     // What POST /api/v1/live-view/ticket signs for this session's page load (tested below).
-    ticket: (lease: string, computerId?: string, now?: number) =>
-      signLiveViewTicket(
-        config.BETTER_AUTH_SECRET,
-        { userId: id, sessionId, lease, ...(computerId && { computerId }) },
-        now,
-      ),
+    ticket: (lease: string, computerId: string, now?: number) =>
+      signLiveViewTicket(config.BETTER_AUTH_SECRET, { userId: id, sessionId, lease, computerId }, now),
   };
 }
-// A visible heartbeat: the page load's live watch, which the relay needs, on the main computer or a fork.
-const watch = async (userId: string, lease: string, computer?: string) =>
+// A visible heartbeat: the page load's live watch on a computer, which the relay needs.
+const watch = async (userId: string, lease: string, computer: string) =>
   heartbeat(db, { provider: fake.provider, metering: noMetering }, await member(userId), {
-    leases: [{ kind: 'live-view', id: lease, state: 'visible', ...(computer ? { computer } : {}) }],
+    leases: [{ kind: 'live-view', id: lease, state: 'visible', computer }],
   });
-// An agent's computer session, on a new fork of the person's main computer; returns the fork's ID.
+// An agent's computer session, on a new computer; returns its ID.
 const open = async (userId: string) => {
   const opened = await openComputerSession(
     db,
@@ -135,55 +132,54 @@ describe('live view relay route', () => {
       return { status: response.status, json: await response.json() };
     };
     // No ticket, an altered or expired one, or one for a session that ended.
-    const signed = a.ticket(page);
+    const absent = newPublicId('computer');
+    const signed = a.ticket(page, absent);
     const altered = `${signed.slice(0, -2)}${signed.endsWith('AA') ? 'BB' : 'AA'}`;
-    const expired = a.ticket(page, undefined, Date.now() - LIVE_VIEW_TICKET_MS - 1);
+    const expired = a.ticket(page, absent, Date.now() - LIVE_VIEW_TICKET_MS - 1);
     for (const ticket of [null, '', 'x.y', altered, expired, signed.replace('.', '..')])
       expect(await connect(ticket), String(ticket)).toEqual({ status: 401, json: { error: 'unauthenticated' } });
     const signedOut = await identity('signed-out');
-    const theirs = signedOut.ticket(page);
+    const theirs = signedOut.ticket(page, absent);
     await db.delete(schema.session).where(eq(schema.session.userId, 'signed-out'));
     expect((await connect(theirs)).status).toBe(401);
     for (const from of ['https://evil.test', `${origin}.evil.test`, null])
-      expect(await connect(a.ticket(page), { from }), String(from)).toEqual({
+      expect(await connect(a.ticket(page, absent), { from }), String(from)).toEqual({
         status: 403,
         json: { error: 'forbidden_origin' },
       });
-    expect((await connect(a.ticket(page), { websocket: false })).status).toBe(426);
-    // No computer yet.
-    expect(await connect(a.ticket(page))).toEqual({ status: 404, json: { error: 'not_found' } });
+    expect((await connect(a.ticket(page, absent), { websocket: false })).status).toBe(426);
+    // No such computer.
+    expect(await connect(a.ticket(page, absent))).toEqual({ status: 404, json: { error: 'not_found' } });
     // A computer, but this page load holds no watch on it; another user's watch on the same lease ID does not count.
-    const forkA = await open('a');
-    const forkB = await open('b');
-    await watch('b', page);
-    expect(await connect(a.ticket(page))).toEqual({ status: 409, json: { error: 'not_watching' } });
-    // A fork: another member's, and one of the user's own that this lease watches only on the main computer.
-    expect(await connect(a.ticket(page, forkB))).toEqual({ status: 404, json: { error: 'not_found' } });
-    await watch('b', page, forkB);
-    expect(await connect(a.ticket(page, forkA))).toEqual({
-      status: 409,
-      json: { error: 'not_watching' },
-    });
+    const computerA = await open('a');
+    const computerB = await open('b');
+    await watch('b', page, computerB);
+    expect(await connect(a.ticket(page, computerA))).toEqual({ status: 409, json: { error: 'not_watching' } });
+    // Another member's computer does not exist for this user.
+    expect(await connect(a.ticket(page, computerB))).toEqual({ status: 404, json: { error: 'not_found' } });
     expect(upgrade).not.toHaveBeenCalled();
     // Watched, but the computer cannot be reached: logged by class only, never the stream's URL or token.
-    await watch('a', page);
+    await watch('a', page, computerA);
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const down = { ...fake.provider, connect: async () => Promise.reject(new Error('sandbox-1 token-sandbox-1')) };
-    expect(await connect(a.ticket(page), {}, down)).toEqual({ status: 503, json: { error: 'service_unavailable' } });
+    expect(await connect(a.ticket(page, computerA), {}, down)).toEqual({
+      status: 503,
+      json: { error: 'service_unavailable' },
+    });
     // The stream's WebSocket refuses the connection.
     fake.setStreamUrl('ws://127.0.0.1:1/');
-    expect(await connect(a.ticket(page))).toEqual({ status: 503, json: { error: 'service_unavailable' } });
+    expect(await connect(a.ticket(page, computerA))).toEqual({ status: 503, json: { error: 'service_unavailable' } });
     expect(fake.calls.streams).toEqual(['sandbox-1']);
     expect(logged.mock.calls.flat().join(' ')).not.toMatch(/token|127\.0\.0\.1/);
     expect(upgrade).not.toHaveBeenCalled();
     // A lapsed watch no longer connects.
     vi.useFakeTimers({ now: Date.now() + 10 * 60_000, toFake: ['Date'] });
     try {
-      expect((await connect(a.ticket(page))).status).toBe(409);
+      expect((await connect(a.ticket(page, computerA))).status).toBe(409);
     } finally {
       vi.useRealTimers();
     }
-    expect((await connect(b.ticket(page))).status).toBe(503);
+    expect((await connect(b.ticket(page, computerB))).status).toBe(503);
   });
 
   it("hands out a ticket only to a member's own page, for a well-formed lease, opening the relay at the API's origin", async () => {
@@ -197,7 +193,8 @@ describe('live view relay route', () => {
         headers: { cookie, origin: from, 'content-type': 'application/json' },
         body: JSON.stringify(body),
       });
-    const answer = await ask({ lease: page });
+    const computer = newPublicId('computer');
+    const answer = await ask({ lease: page, computer });
     expect(answer.status).toBe(200);
     const { url } = await answer.json();
     expect(url).toMatch(/^ws:\/\/localhost:3197\/api\/v1\/live-view\?ticket=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
@@ -206,16 +203,23 @@ describe('live view relay route', () => {
       userId: 'a',
       sessionId: expect.any(String),
       lease: page,
+      computerId: computer,
     });
-    // The ticket opens the relay route, which then judges the lease as before: no computer yet.
+    // The ticket opens the relay route, which then judges the lease as before: no such computer.
     const opened = await liveViewHandler({ db, auth, origin, computers: fake.provider })(
       new Request(url.replace(/^ws/, 'http'), { headers: { origin, upgrade: 'websocket', connection: 'Upgrade' } }),
     );
     expect(opened.status).toBe(404);
-    // Only the web app's pages, signed in, as a member, for a page load's lease and one of their forks.
-    expect((await ask({ lease: page }, { from: 'https://evil.test' })).status).toBe(403);
-    expect((await ask({ lease: page }, { cookie: '' })).status).toBe(401);
-    for (const body of [{}, { lease: 'not-a-uuid' }, { lease: page, computer: 'cmp_x' }, { lease: page, extra: 1 }])
+    // Only the web app's pages, signed in, as a member, for a page load's lease and one of their computers.
+    expect((await ask({ lease: page, computer }, { from: 'https://evil.test' })).status).toBe(403);
+    expect((await ask({ lease: page, computer }, { cookie: '' })).status).toBe(401);
+    for (const body of [
+      {},
+      { lease: page },
+      { lease: 'not-a-uuid', computer },
+      { lease: page, computer: 'cmp_x' },
+      { lease: page, computer, extra: 1 },
+    ])
       expect((await ask(body)).status, JSON.stringify(body)).toBe(400);
     await db
       .insert(schema.user)
@@ -226,7 +230,7 @@ describe('live view relay route', () => {
       .values({ id: randomUUID(), userId: 'loner', token, expiresAt: new Date(Date.now() + 3600_000) });
     const signature = createHmac('sha256', config.BETTER_AUTH_SECRET).update(token).digest('base64');
     const loner = `${(await auth.$context).authCookies.sessionToken.name}=${encodeURIComponent(`${token}.${signature}`)}`;
-    expect((await ask({ lease: page }, { cookie: loner })).status).toBe(403);
+    expect((await ask({ lease: page, computer }, { cookie: loner })).status).toBe(403);
   });
 
   // Both ways the route gets its socket: Vercel's runtime, which hands upgradeWebSocket the raw request through its
@@ -300,9 +304,9 @@ describe('live view relay route', () => {
     it('relays the screen to a watcher, passes input only during a takeover, and releases held keys on close', async () => {
       const a = await identity('a');
       const page = randomUUID();
-      await open('a');
-      await watch('a', page);
-      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page)}`;
+      const computerId = await open('a');
+      await watch('a', page, computerId);
+      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page, computerId)}`;
       const browser = new WebSocket(url, 'binary', { origin });
       const greeting = await new Promise<Buffer>((resolve, reject) => {
         browser.once('message', data => resolve(data as Buffer));
@@ -326,7 +330,9 @@ describe('live view relay route', () => {
       expect(sent()).toEqual(Buffer.concat([handshake, update]));
       // Taking over lets input through without reconnecting, once the relay re-reads control.
       expect(
-        await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member('a'), page),
+        await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member('a'), page, {
+          computerId,
+        }),
       ).toMatchObject({
         takeover: { mine: true },
       });
@@ -343,14 +349,15 @@ describe('live view relay route', () => {
       expect(computer.clients.size).toBe(0);
     });
 
-    it("relays a fork's screen to a watcher of that fork, with input during the user's takeover of it", async () => {
+    it("relays only the watched computer's screen, with input during the user's takeover of it", async () => {
       const a = await identity('a');
       const page = randomUUID();
-      const fork = await open('a');
-      await watch('a', page, fork);
+      await open('a');
+      const watched = await open('a');
+      await watch('a', page, watched);
       const port = (server.address() as AddressInfo).port;
       const browser = new WebSocket(
-        `ws://127.0.0.1:${port}/api/v1/live-view?ticket=${a.ticket(page, fork)}`,
+        `ws://127.0.0.1:${port}/api/v1/live-view?ticket=${a.ticket(page, watched)}`,
         'binary',
         {
           origin,
@@ -360,12 +367,12 @@ describe('live view relay route', () => {
         browser.once('message', resolve);
         browser.once('error', reject);
       });
-      // The fork's stream, not the main computer's.
-      expect(upstreamRequests[0]?.headers['e2b-traffic-access-token']).toBe(`token-${await sandboxOf(fork)}`);
+      // That computer's stream, not the user's other one.
+      expect(upstreamRequests[0]?.headers['e2b-traffic-access-token']).toBe(`token-${await sandboxOf(watched)}`);
       for (const message of [Buffer.from('RFB 003.008\n'), Buffer.from([1]), Buffer.from([1])]) browser.send(message);
       const keyDown = Buffer.from([4, 1, 0, 0, 0, 0, 0, 0x61]);
       const computers = { provider: fake.provider, metering: noMetering };
-      expect(await takeOverComputer(db, computers, await member('a'), page, { computerId: fork })).toMatchObject({
+      expect(await takeOverComputer(db, computers, await member('a'), page, { computerId: watched })).toMatchObject({
         takeover: { mine: true },
       });
       await until(
@@ -384,9 +391,9 @@ describe('live view relay route', () => {
     it('ends the relay once the user signs out, with the code that tells the page to wait for its watch', async () => {
       const a = await identity('a');
       const page = randomUUID();
-      await open('a');
-      await watch('a', page);
-      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page)}`;
+      const computerId = await open('a');
+      await watch('a', page, computerId);
+      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page, computerId)}`;
       const browser = new WebSocket(url, 'binary', { origin });
       const closed = closeOf(browser);
       await new Promise(resolve => browser.once('message', resolve));
@@ -396,13 +403,13 @@ describe('live view relay route', () => {
       await until(() => computer.clients.size === 0);
     });
 
-    it('closes at once, before reaching the computer, when the computer must be reset for live view', async () => {
+    it('closes at once, before reaching the computer, when the computer is too old for live view', async () => {
       const a = await identity('a');
       const page = randomUUID();
-      await open('a');
-      await watch('a', page);
+      const computerId = await open('a');
+      await watch('a', page, computerId);
       fake.sandboxes.get('sandbox-1')!.public = true;
-      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page)}`;
+      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(page, computerId)}`;
       const browser = new WebSocket(url, 'binary', { origin });
       expect(await closeOf(browser)).toEqual({ code: 4002, reason: 'needs reset' });
       expect(upstreamRequests).toHaveLength(0);
@@ -414,8 +421,8 @@ describe('live view relay route', () => {
       async () => {
         const a = await identity('a');
         const page = randomUUID();
-        await open('a');
-        await watch('a', page);
+        const computerId = await open('a');
+        await watch('a', page, computerId);
         // The route closes at once and returns its 204 while the socket is still open.
         fake.sandboxes.get('sandbox-1')!.public = true;
         const socket = connect((server.address() as AddressInfo).port, '127.0.0.1');
@@ -423,7 +430,7 @@ describe('live view relay route', () => {
         socket.on('data', chunk => chunks.push(chunk));
         socket.write(
           [
-            `GET /api/v1/live-view?ticket=${a.ticket(page)} HTTP/1.1`,
+            `GET /api/v1/live-view?ticket=${a.ticket(page, computerId)} HTTP/1.1`,
             'Host: 127.0.0.1',
             'Upgrade: websocket',
             'Connection: Upgrade',
@@ -446,8 +453,8 @@ describe('live view relay route', () => {
 
     it('refuses the upgrade itself when the page load holds no watch', async () => {
       const a = await identity('a');
-      await open('a');
-      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(randomUUID())}`;
+      const computerId = await open('a');
+      const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/live-view?ticket=${a.ticket(randomUUID(), computerId)}`;
       const browser = new WebSocket(url, 'binary', { origin });
       const refusal = await new Promise<IncomingMessage>(resolve =>
         browser.once('unexpected-response', (_req, res) => resolve(res)),

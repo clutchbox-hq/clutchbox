@@ -1,7 +1,6 @@
 /// <reference path="../lib/novnc.d.ts" />
 'use client';
-import { FORK_UNUSED_MS } from '@clutchbox/server/computer-timing';
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@clutchbox/ui/components/alert';
+import { Alert, AlertDescription, AlertTitle } from '@clutchbox/ui/components/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,8 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@clutchbox/ui/components/alert-dialog';
-import { Button, buttonVariants } from '@clutchbox/ui/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
+import { Button } from '@clutchbox/ui/components/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@clutchbox/ui/components/card';
 import {
   Item,
   ItemActions,
@@ -26,7 +25,7 @@ import {
 import { Spinner } from '@clutchbox/ui/components/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@clutchbox/ui/components/toggle-group';
 import type RFB from '@novnc/novnc';
-import { Eye, Maximize, Monitor, MousePointer2 } from 'lucide-react';
+import { Eye, Maximize, MousePointer2, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -34,9 +33,11 @@ import {
   type ComputerView,
   type HeartbeatLease,
   type LiveViewStatus,
+  useDeleteComputer,
   useHeartbeat,
   useLiveViewClipboard,
   useLiveViewControl,
+  useNewComputer,
 } from '../lib/api.ts';
 import {
   chord,
@@ -53,16 +54,16 @@ import {
 } from '../lib/live-view-input.ts';
 import { agentName } from './agent-connections.tsx';
 import { useLeaveGuard } from './app-shell.tsx';
-import { PinActions } from './pin-computer.tsx';
+import { Failure } from './failure.tsx';
 
 // Close codes from the relay (RELAY_CLOSE in packages/server/src/live-view-relay.ts): 4000 is its clean close
 // before the route's time limit, so reconnect at once; 4001 means this lease lost its watch (hidden too long) or the
-// sign-in ended, so wait for a beat that finds it watching; 4002 means the computer must be reset first; 1008 is the
+// sign-in ended, so wait for a beat that finds it watching; 4002 means the computer predates private live view, so it must be replaced; 1008 is the
 // RFB filter refusing what this page sent, which a retry would repeat. Any other close is a drop, retried with
 // backoff while the page is visible.
 const RECONNECT_NOW = 4000;
 const NOT_WATCHING = 4001;
-const NEEDS_RESET = 4002;
+const TOO_OLD = 4002;
 const POLICY = 1008;
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 // How long a paste shortcut waits for the browser's paste event before reading the clipboard instead: Chrome on macOS
@@ -72,100 +73,94 @@ const PASTE_EVENT_MS = 250;
 const LOST = Symbol('lost');
 
 // waiting: stopped retrying until a heartbeat finds the page watching while visible.
-type Viewer = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'waiting' | 'needsReset' | 'refused' | 'failed';
+type Viewer = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'waiting' | 'tooOld' | 'refused' | 'failed';
 
-type Fork = ComputerView['forks'][number];
+type Computer = ComputerView['computers'][number];
 type Intent = 'watch' | 'control';
-// What live view is on: the user's main computer, or an agent's fork of it (computer, its ID), with the name shown.
-type Target = { computer?: string | undefined; name: string };
-const MAIN: Target = { name: 'Your computer' };
-const forkName = (fork: Fork) => fork.label ?? (fork.agent ? `${agentOf(fork.agent)}'s computer` : 'Agent computer');
-const agentOf = ({ agent, host }: NonNullable<Fork['agent']>) => (agent ? agentName(agent) : host);
-const statusNames: Record<Fork['status'], string> = {
+// The computer live view is on, by ID, with the name shown.
+type Target = { computer: string; name: string };
+const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const agentOf = ({ agent, host }: NonNullable<Computer['agent']>) => (agent ? agentName(agent) : host);
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+// A computer's name: only agents label one, so without a label, its agent or the day it was made.
+const computerName = (computer: Computer) =>
+  computer.label ??
+  (computer.agent ? `${agentOf(computer.agent)}'s computer` : `Computer from ${day(computer.createdAt)}`);
+const statusNames: Record<Computer['status'], string> = {
   starting: 'Starting',
   in_use: 'Working now',
   running: 'Idle',
   paused: 'Paused',
 };
-const UNUSED_DAYS = FORK_UNUSED_MS / (24 * 3600_000);
 
-// Live view on the Computer page: noVNC, through our relay, on the user's main computer or one of their agents' forks
-// of it. It starts only when the user chooses Watch or Take control, so opening the page neither wakes a computer nor
-// uses its time. A session's lease keeps a watch while the page is visible (useHeartbeat), and holds the takeover once
-// the user takes control; the relay passes input only while it does, so noVNC's viewOnly only spares the user dead
-// input. Stopping, switching computers, or leaving the page releases the lease, which ends the watch and hands back.
-// metered: there is a credit (the metering hook); exhausted: it is used up (as LiveViewStatus says), until it
-// resets. forks: the agents' forks that are not paused, and the pinned ones. A link with ?computer=<fork ID>, the
-// live-view link the REST API gives developers, starts watching that fork.
+// The member's computers, and live view through our relay (noVNC) on the one they choose. It starts only when the user
+// chooses Watch or Take control, so opening the page neither wakes a computer nor uses its time. A session's lease keeps
+// a watch while the page is visible (useHeartbeat), and holds the takeover once the user takes control; the relay passes
+// input only while it does, so noVNC's viewOnly only spares the user dead input. Stopping, switching computers, or
+// leaving the page releases the lease, which ends the watch and hands back. exhausted: the credit is used up (as
+// LiveViewStatus says), until it resets. limit and replaces: how many the member may have, and which a new computer would
+// replace at that limit. A link with ?computer=<ID>, the live-view link the REST API gives developers, starts watching
+// that computer.
 export function LiveViewPanel({
-  metered,
   exhausted,
-  forks,
+  computers,
+  limit,
+  replaces,
 }: {
-  metered: boolean;
   exhausted: { message: string } | null;
-  forks: Fork[];
+  computers: Computer[];
+  limit: number;
+  replaces: Computer | null;
 }) {
   const linkedId = useSearchParams().get('computer');
-  const linked = forks.find(fork => fork.computerId === linkedId);
+  const linked = computers.find(computer => computer.computerId === linkedId);
   const [session, setSession] = useState<{ intent: Intent; target: Target } | null>(() =>
-    linked ? { intent: 'watch', target: { computer: linked.computerId, name: forkName(linked) } } : null,
+    linked ? { intent: 'watch', target: { computer: linked.computerId, name: computerName(linked) } } : null,
   );
   const start = (intent: Intent, target: Target) => setSession({ intent, target });
   return (
     <>
-      {forks.length > 0 && (
-        <AgentComputers
-          forks={forks}
-          viewing={session ? (session.target.computer ?? null) : undefined}
-          exhausted={!!exhausted}
-          onStart={start}
-        />
-      )}
-      {session ? (
+      <ComputerList
+        computers={computers}
+        limit={limit}
+        replaces={replaces}
+        viewing={session?.target.computer}
+        exhausted={!!exhausted}
+        onStart={start}
+        onDeleted={id => setSession(current => (current?.target.computer === id ? null : current))}
+      />
+      {session && (
         <LiveSession
-          key={session.target.computer ?? 'main'}
+          key={session.target.computer}
           intent={session.intent}
           target={session.target}
           onStop={() => setSession(null)}
         />
-      ) : (
-        <LiveViewOff metered={metered} exhausted={exhausted} onStart={intent => start(intent, MAIN)} />
       )}
     </>
   );
 }
 
-// The main computer, then the agents' pinned forks of it and their running ones, each with the agent using it; Watch or
-// Take control moves live view to one, and a fork can be pinned, renamed, or unpinned. viewing: the computer live view
-// is on (null for the main computer), undefined when it is off.
-function AgentComputers({
-  forks,
+// The member's computers, each with what it is doing, Watch and Take control, and delete, and the way to make one.
+// viewing: the computer live view is on.
+function ComputerList({
+  computers,
+  limit,
+  replaces,
   viewing,
   exhausted,
   onStart,
+  onDeleted,
 }: {
-  forks: Fork[];
-  viewing: string | null | undefined;
+  computers: Computer[];
+  limit: number;
+  replaces: Computer | null;
+  viewing: string | undefined;
   exhausted: boolean;
   onStart: (intent: Intent, target: Target) => void;
+  onDeleted: (id: string) => void;
 }) {
-  const rows = [
-    { target: MAIN, note: "Agents' new computers are copies of it, made when they start.", starting: false },
-    // Pinned first; each group keeps the most recently used first.
-    ...[...forks]
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-      .map(fork => ({
-        target: { computer: fork.computerId, name: forkName(fork) },
-        note: [
-          ...(fork.pinned ? ['Pinned'] : []),
-          fork.agent ? agentOf(fork.agent) : 'No agent',
-          statusNames[fork.status],
-        ].join(' · '),
-        starting: fork.status === 'starting',
-        fork,
-      })),
-  ];
+  const make = <NewComputer count={computers.length} limit={limit} replaces={replaces} exhausted={exhausted} />;
   return (
     <Card>
       <CardHeader>
@@ -173,101 +168,197 @@ function AgentComputers({
           <h2>Computers</h2>
         </CardTitle>
         <CardDescription>
-          Your agents each work on their own copy of your computer. Watch one, or take control to help it past a sign-in
-          or a check; the agent waits until you hand back. Pin one to keep it by name: copies that aren't pinned are
-          deleted after {UNUSED_DAYS} days unused.
+          Each computer is for one task, and starts fresh with your newest sign-ins. Watch one, or take control to help
+          an agent past a sign-in or a check; the agent waits until you hand back.
         </CardDescription>
+        {computers.length > 0 && <CardAction>{make}</CardAction>}
       </CardHeader>
       <CardContent>
-        <ItemGroup className="gap-0">
-          {rows.map(({ target, note, starting, ...row }, index) => (
-            <div key={target.computer ?? 'main'}>
-              {index > 0 && <ItemSeparator />}
-              <Item className="px-0">
-                <ItemContent>
-                  <ItemTitle>{target.name}</ItemTitle>
-                  <ItemDescription>{note}</ItemDescription>
-                </ItemContent>
-                <ItemActions className="flex-wrap justify-end">
-                  {'fork' in row && <PinActions fork={row.fork} />}
-                  {viewing === (target.computer ?? null) ? (
-                    <span className="text-sm text-muted-foreground">In live view</span>
-                  ) : (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={exhausted || starting}
-                        onClick={() => onStart('watch', target)}
-                      >
-                        <Eye aria-hidden />
-                        Watch
-                      </Button>
-                      <Button size="sm" disabled={exhausted || starting} onClick={() => onStart('control', target)}>
-                        <MousePointer2 aria-hidden />
-                        Take control
-                      </Button>
-                    </>
-                  )}
-                </ItemActions>
-              </Item>
-            </div>
-          ))}
-        </ItemGroup>
+        {computers.length > 0 ? (
+          <ItemGroup className="gap-0">
+            {computers.map((computer, index) => (
+              <div key={computer.computerId}>
+                {index > 0 && <ItemSeparator />}
+                <ComputerRow
+                  computer={computer}
+                  viewing={viewing === computer.computerId}
+                  exhausted={exhausted}
+                  onStart={onStart}
+                  onDeleted={onDeleted}
+                />
+              </div>
+            ))}
+          </ItemGroup>
+        ) : (
+          <div className="grid justify-items-center gap-3 rounded-lg bg-muted p-8 text-center">
+            <p className="font-heading text-xl">No computers yet</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              An agent makes one when it starts a task. Make one now to sign in to a site or look around.
+            </p>
+            {make}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function LiveViewOff({
-  metered,
+function ComputerRow({
+  computer,
+  viewing,
   exhausted,
   onStart,
+  onDeleted,
 }: {
-  metered: boolean;
-  exhausted: { message: string } | null;
-  onStart: (intent: Intent) => void;
+  computer: Computer;
+  viewing: boolean;
+  exhausted: boolean;
+  onStart: (intent: Intent, target: Target) => void;
+  onDeleted: (id: string) => void;
 }) {
+  const { computerId, status, agent } = computer;
+  const name = computerName(computer);
+  const [confirming, setConfirming] = useState(false);
+  const remove = useDeleteComputer();
+  const starting = status === 'starting';
+  const target = { computer: computerId, name };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <h2>Live view</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid min-h-96 place-content-center justify-items-center gap-4 rounded-lg bg-black p-6 text-center ring-1 ring-foreground/10 sm:aspect-[16/10] sm:min-h-0">
-          <Monitor aria-hidden className="size-8 text-muted-foreground" />
-          <div className="grid gap-1">
-            <p className="font-heading text-2xl">Live view is off</p>
-            <p className="max-w-sm text-sm text-foreground">
-              {exhausted
-                ? `${exhausted.message} Live view is off.`
-                : 'Take control to sign in to sites on your computer. Your agents work on copies of it, made with its sign-ins.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button variant="outline" disabled={!!exhausted} onClick={() => onStart('watch')}>
-              <Eye aria-hidden />
-              Watch
-            </Button>
-            <Button disabled={!!exhausted} onClick={() => onStart('control')}>
-              <MousePointer2 aria-hidden />
-              Take control
-            </Button>
-          </div>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Live view wakes your computer, or starts it{metered ? ", and uses free minutes while it's open" : ''}.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      <Item className="px-0">
+        <ItemContent>
+          <ItemTitle>{name}</ItemTitle>
+          <ItemDescription>
+            {[...(agent ? [agentOf(agent)] : []), statusNames[status], `Last used ${when(computer.lastUsedAt)}`].join(
+              ' · ',
+            )}
+          </ItemDescription>
+        </ItemContent>
+        <ItemActions className="flex-wrap justify-end">
+          {viewing ? (
+            <span className="text-sm text-muted-foreground">In live view</span>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exhausted || starting}
+                onClick={() => onStart('watch', target)}
+              >
+                <Eye aria-hidden />
+                Watch
+              </Button>
+              <Button size="sm" disabled={exhausted || starting} onClick={() => onStart('control', target)}>
+                <MousePointer2 aria-hidden />
+                Take control
+              </Button>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Delete ${name}`}
+            disabled={starting || status === 'in_use' || remove.isPending}
+            onClick={() => {
+              remove.reset();
+              setConfirming(true);
+            }}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        </ItemActions>
+      </Item>
+      <Failure error={remove.error} />
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Its files, its tabs, and every sign-in made on it are deleted. Agents that kept its ID can't return to it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirming(false);
+                remove.mutate(computerId, { onSuccess: () => onDeleted(computerId) });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// Makes a computer with no agent. At the limit it replaces the one the server named, once the member confirms; with none
+// to replace, or a plan that allows none, it can't, and says why.
+function NewComputer({
+  count,
+  limit,
+  replaces,
+  exhausted,
+}: {
+  count: number;
+  limit: number;
+  replaces: Computer | null;
+  exhausted: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const create = useNewComputer();
+  const atLimit = count >= limit;
+  const why =
+    limit === 0
+      ? "This account's plan allows no computers."
+      : atLimit && !replaces
+        ? 'All your computers are in use. Try again when one is idle.'
+        : null;
+  return (
+    <div className="grid justify-items-end gap-2">
+      <Button
+        disabled={create.isPending || exhausted || !!why}
+        onClick={() => {
+          create.reset();
+          if (atLimit) setConfirming(true);
+          else create.mutate(undefined);
+        }}
+      >
+        {create.isPending ? <Spinner aria-hidden /> : <Plus aria-hidden />}
+        New computer
+      </Button>
+      {why && <p className="text-xs text-muted-foreground">{why}</p>}
+      <Failure error={create.error} />
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace {replaces ? computerName(replaces) : 'a computer'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have as many computers as you can. A new one replaces your least recently used idle computer
+              {replaces && `, last used ${when(replaces.lastUsedAt)}`}. Its files, its tabs, and every sign-in made on
+              it are deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirming(false);
+                create.mutate(replaces?.computerId);
+              }}
+            >
+              Replace it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
 function LiveSession({ intent, target, onStop }: { intent: Intent; target: Target; onStop: () => void }) {
   const { computer } = target;
-  const fork = !!computer;
   const [lease] = useState(() => crypto.randomUUID());
   const leases = useMemo<HeartbeatLease[]>(() => [{ kind: 'live-view', id: lease, computer }], [lease, computer]);
   const { statusOf, isError, setStatus, updatedAt } = useHeartbeat(leases);
@@ -350,12 +441,12 @@ function LiveSession({ intent, target, onStop }: { intent: Intent; target: Targe
         </CardHeader>
         <CardContent className="grid gap-4">
           <p className="text-sm text-foreground" role="status" aria-live="polite">
-            {describe({ status, isError, viewer: viewer.state, takingOver: takeOver.isPending, fork })}
+            {describe({ status, isError, viewer: viewer.state })}
           </p>
           {waiting && (
             <Alert>
               <AlertTitle>
-                {waiting.agent ? agentName(waiting.agent) : `An agent at ${waiting.host}`} is waiting for your computer
+                {waiting.agent ? agentName(waiting.agent) : `An agent at ${waiting.host}`} is waiting for this computer
               </AlertTitle>
               <AlertDescription>
                 It asked to use it at {time(waiting.since)}. Switch to Watch or stop when you're done, and it carries on
@@ -363,18 +454,13 @@ function LiveSession({ intent, target, onStop }: { intent: Intent; target: Targe
               </AlertDescription>
             </Alert>
           )}
-          {viewer.state === 'needsReset' && (
+          {viewer.state === 'tooOld' && (
             <Alert>
-              <AlertTitle>Reset your computer to use live view</AlertTitle>
+              <AlertTitle>Delete this computer to use live view</AlertTitle>
               <AlertDescription>
-                Your computer was made before live view, which needs it to be private. Resetting it deletes sign-ins and
-                files made on it.
+                This computer was made before live view, which needs it to be private. Delete it and make a new one to
+                watch or control it.
               </AlertDescription>
-              <AlertAction>
-                <a href="#reset" className={buttonVariants({ size: 'sm' })}>
-                  Go to reset
-                </a>
-              </AlertAction>
             </Alert>
           )}
           {lapsed && !inControl && (
@@ -407,9 +493,8 @@ function LiveSession({ intent, target, onStop }: { intent: Intent; target: Targe
             <Alert>
               <AlertTitle>Signing in here</AlertTitle>
               <AlertDescription>
-                {fork
-                  ? "A sign-in you make here stays on this agent's computer only. To sign in for every agent, take control of your computer instead."
-                  : "A sign-in you make here reaches agents' computers made after you hand back. One to a site your browser syncs lasts until that site's sign-in changes in your own browser, or you sign out of it there: the next sync then replaces it. Sign-ins to sites you don't sync stay."}
+                A sign-in you make here stays on this computer only. To have it on every new computer, sign in to the
+                site in your own browser and sync it.
               </AlertDescription>
             </Alert>
           )}
@@ -420,9 +505,8 @@ function LiveSession({ intent, target, onStop }: { intent: Intent; target: Targe
           <AlertDialogHeader>
             <AlertDialogTitle>Hand back and leave?</AlertDialogTitle>
             <AlertDialogDescription>
-              {fork
-                ? "You're in control of this agent's computer. Leaving this page hands it back, so the agent carries on."
-                : "You're in control of your computer. Leaving this page hands it back, and agents' new computers get what you signed in to."}
+              You're in control of this computer. Leaving this page hands it back, so an agent waiting for it carries
+              on.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -464,30 +548,21 @@ function useLeaveConfirm(inControl: boolean, handBack: () => Promise<unknown>) {
   };
 }
 
-// fork: live view is on an agent's fork rather than the main computer.
 function describe({
   status,
   isError,
   viewer,
-  takingOver,
-  fork,
 }: {
   status: LiveViewStatus | undefined;
   isError: boolean;
   viewer: Viewer;
-  takingOver: boolean;
-  fork: boolean;
 }) {
   if (!status) return isError ? 'Live view could not load. Reload to try again.' : 'Loading…';
-  // A fork is never created here: one that is gone was deleted, or expired.
-  if (status.computer === 'none' && fork) return "This agent's computer was deleted.";
-  if (status.computer === 'none')
-    return status.creditExhausted && !takingOver
-      ? "You have no computer yet, and this month's free minutes are used up."
-      : 'Starting your computer…';
+  // Live view never creates a computer: one that is gone was deleted or replaced.
+  if (status.computer === 'none') return 'This computer was deleted.';
   if (viewer === 'refused') return 'Live view closed the connection. Reload the page to try again.';
   if (viewer === 'failed') return 'Live view could not start. Reload the page to try again.';
-  if (viewer === 'needsReset') return 'Live view needs your computer to be reset first.';
+  if (viewer === 'tooOld') return 'This computer is too old for live view.';
   if (viewer === 'waiting')
     return isError
       ? 'Live view lost touch with the server. Reload the page to try again.'
@@ -496,9 +571,7 @@ function describe({
   if (viewer === 'connecting') return status.computer === 'paused' ? 'Waking the computer…' : 'Connecting…';
   if (viewer === 'reconnecting') return 'Reconnecting…';
   if (status.takeover?.mine)
-    return fork
-      ? "You're in control. The agent waits until you switch to Watch or stop."
-      : "You're in control. Agents keep working on their own computers.";
+    return "You're in control. An agent on this computer waits until you switch to Watch or stop.";
   if (status.takeover) return "You're in control in another tab. Switch to Control here to move it to this one.";
   if (viewer === 'connected') return 'Watching. Switch to Control to use the mouse and keyboard.';
   return 'Connecting…';
@@ -508,14 +581,13 @@ const mac = () => typeof navigator !== 'undefined' && isMac(navigator.platform);
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-// noVNC on this lease's relay connection, to the computer named (a fork's ID; without one, the main computer), while
-// it is connectable, reconnecting after drops while the page is visible. viewOnly follows the takeover without
-// reconnecting. Agents choose the computer's screen size, so the page never resizes it; size is that screen's, for the
-// view's shape. beatAt is when the heartbeat last answered. setClipboard sets the computer's clipboard for a paste
+// noVNC on this lease's relay connection, to the computer named, while it is connectable, reconnecting after drops
+// while the page is visible. viewOnly follows the takeover without reconnecting. A computer's screen size is set when
+// it is made, so the page never resizes it; size is that screen's, for the view's shape. beatAt is when the heartbeat last answered. setClipboard sets the computer's clipboard for a paste
 // (useLiveViewClipboard); problem is why the last paste failed.
 function useViewer(
   lease: string,
-  computer: string | undefined,
+  computer: string,
   connectable: boolean,
   inControl: boolean,
   beatAt: number,
@@ -577,7 +649,7 @@ function useViewer(
       // dropped connection.
       const ticket = await api<{ url: string }>('/live-view/ticket', 'POST', {
         lease,
-        ...(computer && { computer }),
+        computer,
       }).catch(() => null);
       if (stopped) return;
       if (!ticket) return retry(0);
@@ -612,7 +684,7 @@ function useViewer(
     // After a connection ends with the relay's close code, or 0 for one that never opened.
     const retry = (code: number) => {
       if (code === POLICY) return setState('refused');
-      if (code === NEEDS_RESET) return setState('needsReset');
+      if (code === TOO_OLD) return setState('tooOld');
       // A hidden page lets its watch lapse, so retrying would only be refused until it shows again.
       if (code === NOT_WATCHING || document.hidden) return wait();
       const delay = code === RECONNECT_NOW ? 0 : BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
@@ -786,7 +858,7 @@ function attachInput(
 
 // Whether this lease's takeover ended without a hand-back from this page: the page was hidden or offline past the
 // lapse, so the server let it go. A takeover moved to another tab shows as that tab's instead, and one that ended
-// because the free minutes ran out or the computer was reset has its own message.
+// because the free minutes ran out or the computer was deleted has its own message.
 function useLapsed(status: LiveViewStatus | undefined, handingBack: boolean) {
   const [lapsed, setLapsed] = useState(false);
   const held = useRef(false);

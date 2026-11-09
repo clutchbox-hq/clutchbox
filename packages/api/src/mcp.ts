@@ -8,7 +8,6 @@ import {
   ACT_MAX_WAIT_MS,
   CALL_BUDGET_MS,
   EXEC_MAX_SECONDS,
-  FORK_UNUSED_MS,
   IDLE_PAUSE_MS,
   TYPE_KEY_DELAY_MS,
 } from '@clutchbox/server/computer-timing';
@@ -21,11 +20,11 @@ import {
   type ComputerProvider,
   type Computers,
   closeComputerSession,
-  type ForkView,
-  listForks,
+  deleteComputer,
+  type ListedComputer,
+  listComputers,
   openComputerSession,
   pngSize,
-  SCREEN_NAMES,
   type SessionHandle,
   type SyncSummary,
   sizeName,
@@ -118,12 +117,11 @@ const failure = (value: ComputerFailure, extra: Record<string, unknown> = {}) =>
 const sessionId = z.string().max(100).describe('The session_id returned by computer_open.');
 const computerId = z.string().max(100).describe('The computer_id returned by an earlier computer_open.');
 // The account's computers, as computer_open and computer_list report them.
-const listed = (fork: ForkView) => ({
-  computer_id: fork.computerId,
-  label: fork.label,
-  pinned: fork.pinned,
-  last_used_at: fork.lastUsedAt,
-  status: fork.status,
+const listed = (computer: ListedComputer) => ({
+  computer_id: computer.computerId,
+  label: computer.label,
+  last_used_at: computer.lastUsedAt,
+  status: computer.status,
 });
 // The user's browser profiles, as the tools report them.
 const profileOf = (profile: Profile) => ({
@@ -133,7 +131,6 @@ const profileOf = (profile: Profile) => ({
   last_synced_at: profile.lastSyncedAt,
   default: profile.default,
 });
-const UNUSED_DAYS = FORK_UNUSED_MS / (24 * 3600_000);
 const remote = 'Runs on a cloud computer signed in as the user, never on your own machine.';
 const ACT_MAX_TYPED = 2000;
 // Expected run time, so a batch stops before it overruns the call budget (computer-timing.ts).
@@ -183,7 +180,7 @@ const instructions = (
 
 You are connected as the Clutchbox account ${email}. Each account's computers are signed in to the sites synced from the browser extension under that same account. When the user asks which account you use, or expected sites are signed out, name it.
 
-Computers: computer_open without computer_id creates a computer for you, a copy of the user's own with their newest sign-ins, and returns its computer_id. Keep it: computer_open with that computer_id reopens it later, from this or another conversation, with its tabs and files as you left them and the user's newest sign-ins applied. computer_open and computer_list list the account's other computers. Computers unused for ${UNUSED_DAYS} days are deleted, unless the user pinned them: a pinned computer is kept, with the user's name for it as its label. When the user names one, find it with computer_list and reopen it by its computer_id. Nothing you do on one reaches the user's own computer or browser.
+Computers: each computer is for one task. computer_open without computer_id makes a new one, which starts fresh from the template with the user's newest sign-ins, and returns its computer_id; at the user's limit it may replace their least recently used idle computer. Keep the computer_id: computer_open with it returns to that computer later, from this or another conversation, with its tabs and files as you left them and the user's newest sign-ins applied. computer_open and computer_list list the account's other computers. When the user names one, find it with computer_list and reopen it by its computer_id. computer_delete deletes one you are done with. Nothing you do on one reaches the user's own computer or browser.
 
 Tools: for websites, prefer browser: snapshot reads the page as text with element refs, and click, type, and select act on a ref and return the page after. Use computer_act, the desktop's mouse and keyboard with a screenshot, for what the page text doesn't show, such as canvas apps, or to see the screen; computer_act with no actions only takes a screenshot. Use computer_exec for files the browser downloaded.
 
@@ -192,15 +189,15 @@ Profiles: each browser the user syncs is its own profile on the computer, with t
 Flow: computer_open returns a session_id. Pass it on every other computer tool call for the task. Each computer_open returns a new session_id that replaces the one you passed it; use the newest from then on. When the task is done, always call computer_close with it: that pauses the computer and refunds unused time.
 
 - session_ended: the session was closed, replaced by your own later computer_open (use the session_id that returned), idle for 10 minutes, or superseded by another agent's computer_open after it sat idle for a minute. Call computer_open with your computer_id for a new session_id and look at the screen before continuing.
-- busy: another agent is using that computer. Its control lapses after 1 idle minute (busy_until); try again then, or call computer_open without computer_id for a computer of your own. Yours lapses the same way. busy can also mean every computer the user's organization may run at once is running, until busy_until. Without busy_until, the user is controlling the computer in live view; try again in a few minutes.
+- busy: another agent is using that computer. Its control lapses after 1 idle minute (busy_until); try again then, or call computer_open without computer_id for a computer of your own. Yours lapses the same way. busy can also mean the user is at their limit of computers and every one of them is in use, until busy_until, or that their plan allows no computers. Without busy_until, the user is controlling the computer in live view; try again in a few minutes.
 - user_in_control: the user took control of the computer in live view, often to sign in or pass a bot check for you, and your session waits for them. Keep your session_id and retry in a minute or two; do not call computer_open. When they hand it back, a result carries user_had_control: take a screenshot before acting, since the screen may have changed.
-- computer_not_found: no such computer for this account, or it was deleted. Pick one from computer_list, or call computer_open without computer_id.
+- computer_not_found: that computer was replaced or deleted, or is not this account's. Pick one from computer_list, or call computer_open without computer_id.
 - profile_not_found: that browser no longer syncs to this account. Pick another from profiles, or omit profile.
 - access_revoked: the user disconnected this agent. credit_exhausted: the account's computer credit is used up; its message says until when.
 - Never type passwords or other credentials. If a site needs sign-in, follow sign_in_help from computer_open.`;
 
 // The computer tools, for personal use and demos (developers use the REST API). Each call verifies the live grant
-// (protectedHandler), and every tool but computer_open and computer_list runs within the caller's computer session.
+// (protectedHandler), and every tool but computer_open, computer_list, and computer_delete runs within the caller's computer session.
 function registerComputerTools(
   server: McpServer,
   {
@@ -277,7 +274,7 @@ function registerComputerTools(
     'computer_open',
     {
       title: 'Open a computer',
-      description: `Start a computer session on a remote desktop computer with the user's newest browser sign-ins applied. Without computer_id, creates a new computer for you, a copy of the user's own; with the computer_id of one of the account's computers (from computer_list or an earlier computer_open), reopens it as it was left, resuming it if paused. The session uses one of the user's browser profiles: the one named by profile, else the one the computer had, else the browser the user synced last. Returns session_id, which every other computer tool requires, computer_id, the profile used and all profiles, the account's other computers, display (the screen's size, whose pixels screenshots and coordinates use), and a screenshot. Pass your current session_id to replace it with a fresh session on the same computer without losing control, for example to apply a sign-in the user just synced, and use the new session_id from then on; without it, another active session on that computer (even your own) makes this return busy until its idle minute ends. To open a page, use browser with action navigate. Call computer_close when the task is done. ${remote} ${signInHelp}`,
+      description: `Start a computer session on a remote desktop computer with the user's newest browser sign-ins applied. Without computer_id, makes a new computer for this task, starting fresh from the template with the user's newest sign-ins, which may replace the user's least recently used idle computer at their limit; with the computer_id of one of the account's computers (from computer_list or an earlier computer_open), reopens it as it was left, resuming it if paused. The session uses one of the user's browser profiles: the one named by profile, else the one the computer had, else the browser the user synced last. Returns session_id, which every other computer tool requires, computer_id, the profile used and all profiles, the account's other computers, display (the screen's size, whose pixels screenshots and coordinates use), and a screenshot. Pass your current session_id to replace it with a fresh session on the same computer without losing control, for example to apply a sign-in the user just synced, and use the new session_id from then on; without it, another active session on that computer (even your own) makes this return busy until its idle minute ends. To open a page, use browser with action navigate. Call computer_close when the task is done. ${remote} ${signInHelp}`,
       inputSchema: z
         .object({
           session_id: sessionId.optional().describe('Your current session_id, if you have one.'),
@@ -296,20 +293,14 @@ function registerComputerTools(
             .max(100)
             .optional()
             .describe(
-              "For a new computer: a short name for its task, shown in later computer_open results' computers.",
-            ),
-          screen: z
-            .enum(SCREEN_NAMES)
-            .optional()
-            .describe(
-              "The screen size in pixels: 1440x900, a new computer's; 1280x1024 for more of a page's height; or 1920x1200 for more of both. Switches the computer to it, and it stays until changed; omit it to keep the computer's own. Larger screenshots cost more tokens, and a model that shrinks large images clicks less precisely on them.",
+              'For a new computer: a short name for its task, shown in computer_list and later computer_open results.',
             ),
         })
         .strict(),
       annotations: full,
       _meta: security,
     },
-    recorded('computer_open', async ({ session_id, computer_id, label, profile, screen }) => {
+    recorded('computer_open', async ({ session_id, computer_id, label, profile }) => {
       let handle: SessionHandle | undefined;
       try {
         const opened = await openComputerSession(db, computers, caller, {
@@ -317,7 +308,6 @@ function registerComputerTools(
           computerId: computer_id,
           label,
           profile,
-          screen,
           // A client may re-send this call as a new request when its connection drops (computers.ts, retriedOpen).
           joinRetries: true,
         });
@@ -329,7 +319,9 @@ function registerComputerTools(
         const png = await opened.session.screenshot();
         // End the call first, so the credit counts its running time.
         await opened.done();
-        const others = (await listForks(db, member)).filter(fork => fork.computerId !== opened.computer.id);
+        const others = (await listComputers(db, computers, member)).filter(
+          computer => computer.computerId !== opened.computer.id,
+        );
         const price = computers.metering.minutePrice?.(opened.computer.size);
         return image(png, {
           session_id: opened.sessionId,
@@ -340,12 +332,6 @@ function registerComputerTools(
           profiles: opened.profiles.map(profileOf),
           ...handBack(opened),
           display: pngSize(png),
-          ...(opened.screenUnchanged
-            ? {
-                screen_unchanged:
-                  "The screen could not change size, as on a computer from before screen sizes; display is the computer's own.",
-              }
-            : {}),
           idle_pause_seconds: IDLE_PAUSE_MS / 1000,
           account_id: principal.userId,
           account_email: principal.email,
@@ -371,18 +357,39 @@ function registerComputerTools(
       }
     }),
   );
-  // Read-only and outside any session, so an agent can find a computer the user names (a pinned one) without making one.
+  // Read-only and outside any session, so an agent can find a computer the user names without making one.
   server.registerTool(
     'computer_list',
     {
       title: "List the user's computers",
       description:
-        "List the account's computers without opening one: computer_id, label, pinned, status, and last_used_at, most recently used first. A computer the user pinned is kept, with the user's name for it as its label. Reopen one with computer_open and its computer_id.",
+        "List the account's computers without opening one: computer_id, label, status, and last_used_at, most recently used first. Reopen one with computer_open and its computer_id.",
       inputSchema: z.object({}).strict(),
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: security,
     },
-    recorded('computer_list', async () => result({ computers: (await listForks(db, member)).map(listed) })),
+    recorded('computer_list', async () =>
+      result({ computers: (await listComputers(db, computers, member)).map(listed) }),
+    ),
+  );
+  server.registerTool(
+    'computer_delete',
+    {
+      title: 'Delete a computer',
+      description: `Delete one of the account's computers by its computer_id, with everything on it: its tabs, files, and anything signed in on it. Its computer_id then answers computer_not_found. Use it for a computer you are done with and won't return to; otherwise computer_close keeps it. Refused with busy while another session holds control of it or the user has taken it over; your own session on it ends with it. ${remote}`,
+      inputSchema: z.object({ computer_id: computerId }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      _meta: security,
+    },
+    recorded('computer_delete', async ({ computer_id }) => {
+      try {
+        const deleted = await deleteComputer(db, computers, caller, computer_id);
+        return 'error' in deleted ? failure(deleted) : result(deleted);
+      } catch (error) {
+        toolCallFailed('mcp computer_delete', error);
+        return unavailable({}, error);
+      }
+    }),
   );
   server.registerTool(
     'computer_close',

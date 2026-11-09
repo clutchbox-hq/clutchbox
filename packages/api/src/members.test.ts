@@ -423,11 +423,8 @@ describe('members and roles', () => {
     expect((await request(admin.cookie, 'DELETE', `/organization/members/${id}`)).status).toBe(200);
     expect((await request(admin.cookie, 'DELETE', `/organization/members/${id}`)).status).toBe(404);
 
-    // Their main computer and its fork, then the fork's snapshot.
-    expect({ kill: fake.calls.kill, deleteSnapshot: fake.calls.deleteSnapshot }).toEqual({
-      kill: 2,
-      deleteSnapshot: 1,
-    });
+    // Their computers are killed.
+    expect(fake.calls.kill).toBe(1);
     // The browser stays signed in to the person's other organizations, and a build naming none reconnects.
     expect((await asBrowser()).status).toBe(200);
     expect((await asBrowser('/sync')).status).toBe(401);
@@ -438,7 +435,6 @@ describe('members and roles', () => {
       owners(await db.select({ membershipId: schema.browserCaptures.membershipId }).from(schema.browserCaptures)),
     ).toEqual([elsewhere.membershipId]);
     expect(owners(await db.select({ membershipId: schema.computers.membershipId }).from(schema.computers))).toEqual([
-      elsewhere.membershipId,
       elsewhere.membershipId,
     ]);
     expect((await db.select({ referenceId: schema.oauthConsent.referenceId }).from(schema.oauthConsent)).length).toBe(

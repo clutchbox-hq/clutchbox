@@ -27,16 +27,16 @@ export function DeleteEverything() {
         <CardTitle>
           <h2>Delete everything</h2>
         </CardTitle>
-        <CardDescription>Delete your computer and your synced browser data.</CardDescription>
+        <CardDescription>Delete your computers and your synced browser data.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {confirm ? (
           <div className="grid gap-3 rounded-lg bg-muted p-4">
             <p className="text-sm">
-              This deletes everything: your computer, its files, every sign-in on it, and your synced browser data.
+              This deletes everything: your computers, their files, every sign-in on them, and your synced browser data.
               Every browser is removed from this organization and browser sync turns off here; add a site in the
               extension to sync here again. Agents stay connected and get a fresh computer next time. You'll be set up
-              again the next time an agent opens your computer.
+              again the next time an agent opens a computer.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>

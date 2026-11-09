@@ -19,12 +19,12 @@ import { WebSocket } from 'ws';
 export { CDP_CLOSE } from '@clutchbox/server/cdp-relay';
 
 // The CDP proxy route: GET /api/v1/cdp?token=<secret>, a WebSocket from a developer's CDP client to the Chrome of the
-// fork a REST computer session runs on (POST /api/v1/computers/sessions answers with this URL). Computers stay private:
+// computer a REST computer session runs on (POST /api/v1/computers/sessions answers with this URL). Computers stay private:
 // Chrome listens only on the computer's loopback, reached through its bridge with the provider's traffic token, which
 // never leaves the server. The secret names the session, and the connection acts as the session's API key: the key
 // must still have the computers scope, and the session must be open. Everything that can refuse runs before the
 // upgrade and answers JSON. Once upgraded, the connection is one call of the session, holding control and keeping the
-// fork running, while the relay re-checks the key and the session; it closes with CDP_CLOSE.reconnect just before
+// computer running, while the relay re-checks the key and the session; it closes with CDP_CLOSE.reconnect just before
 // the platform's limit. Never logs messages, URLs, or tokens.
 
 export type CdpDeps = {

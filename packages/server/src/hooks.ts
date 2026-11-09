@@ -63,17 +63,14 @@ export type MemberLimit = { limit: number; message: string };
 export type Limits = {
   // Members it may have, and what an invitation or join past them is told.
   members(db: Pick<Database, 'select'>, organizationId: string): Promise<MemberLimit | null>;
-  // Forks that may run at once across its members, where organizations.max_running_forks is not set.
-  runningForks(db: Pick<Database, 'select'>, organizationId: string): Promise<number | null>;
-  // Forks its members may have pinned at once (computers.ts, pinFork); null for no cap.
-  pinnedForks(db: Pick<Database, 'select'>, organizationId: string): Promise<number | null>;
+  // Computers each of its members may have (computers.ts, Computers). 0 refuses creating one.
+  computers(db: Pick<Database, 'select'>, organizationId: string): Promise<number | null>;
   // Why its developer API (organization API keys and joining through Connect) refuses it, shown to the caller.
   apiRefusal(db: Pick<Database, 'select'>, organizationId: string): Promise<string | null>;
 };
 export const noLimits: Limits = {
   members: async () => null,
-  runningForks: async () => null,
-  pinnedForks: async () => null,
+  computers: async () => null,
   apiRefusal: async () => null,
 };
 

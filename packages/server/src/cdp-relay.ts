@@ -4,7 +4,7 @@ import { CDP_ACCESS_RECHECK_MS, CDP_CLOSE_MARGIN_MS, CDP_CLOSE_WAIT_MS, CDP_PING
 import { errorLabel } from './log.ts';
 import { shutdownSignal } from './shutdown.ts';
 
-// The CDP proxy's pipe: it joins a developer's CDP client (Playwright, browser-use, Stagehand) to the fork's Chrome,
+// The CDP proxy's pipe: it joins a developer's CDP client (Playwright, browser-use, Stagehand) to the computer's Chrome,
 // through the computer's CDP bridge, message for message both ways. The relay ends once the computer session may no
 // longer use the computer (access), or just before the platform's limit.
 

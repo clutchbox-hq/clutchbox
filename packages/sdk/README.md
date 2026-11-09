@@ -1,6 +1,6 @@
 # TypeScript SDK
 
-The developer REST API of a Clutchbox server, typed: read a member's latest synced sign-ins, or open a computer session for a member on a copy of their computer, already signed in, and drive its Chrome from Playwright, browser-use, Stagehand, or any CDP client.
+The developer REST API of a Clutchbox server, typed: read a member's latest synced sign-ins, or open a computer session for a member on a computer of theirs, already signed in, and drive its Chrome from Playwright, browser-use, Stagehand, or any CDP client.
 
 It calls the server with an organization API key (`ack_…`), which an owner or admin creates on the Developers page. A key reads members' captures with the `captures` scope and opens computer sessions with the `computers` scope; new keys have both, and keys made before the `computers` scope have captures alone.
 
@@ -28,16 +28,16 @@ To link your own users to members, register your app under **Connect apps** on t
 
 ## Computer sessions
 
-`computers.open({ member })` starts a session on a new fork of the member's computer, a copy with their newest sign-ins applied (`session.sync` says how they applied). Pass `computer: session.computer.id` to reopen that fork later as it was left, and `session` with your current session's ID to replace it on the same fork. A fork unused for a week is deleted, unless the member pinned it in the web app.
+`computers.open({ member })` starts a session on a new computer for the member, fresh from the template with their newest sign-ins applied (`session.sync` says how they applied). Each member has a limit of computers: at it, a new one replaces their least recently used idle computer, and with none idle the call throws `busy`. Pass `computer: session.computer.id` to reopen that computer later as it was left, and `session` with your current session's ID to replace it on the same computer. A computer that was replaced or deleted answers `computer_not_found`. `computers.delete(computerId)` deletes one you are done with.
 
-Each browser the member syncs is its own Chrome profile on their computers, with that browser's sign-ins, so a site can be signed in as a different person in each, such as a work and a personal account. A session uses one: `session.profile`, among `session.profiles` (`{ id, browser, platform, lastSyncedAt, default }`). Pass `profile: id` to `computers.open` to choose one; without it, a reopened fork keeps the profile it had, and a new fork gets the default, the browser that synced last. `captures.latest(member, { profile })` reads one profile's capture, and the default's without it.
+Each browser the member syncs is its own Chrome profile on their computers, with that browser's sign-ins, so a site can be signed in as a different person in each, such as a work and a personal account. A session uses one: `session.profile`, among `session.profiles` (`{ id, browser, platform, lastSyncedAt, default }`). Pass `profile: id` to `computers.open` to choose one; without it, a reopened computer keeps the profile it had, and a new one gets the default, the browser that synced last. `captures.latest(member, { profile })` reads one profile's capture, and the default's without it.
 
-- `session.cdpUrl` is a WebSocket URL for the fork's Chrome, through the server, which keeps computers private. It works only while the session is open, and only for this session: keep it as secret as the key. Pass it to `chromium.connectOverCDP`, browser-use's `Browser(cdp_url=…)`, or Stagehand's `localBrowserLaunchOptions.cdpUrl`; the member's sign-ins are in Chrome's default context.
-- `session.liveViewUrl` opens live view of the fork for the member, signed in to the server in the same organization. While they take control, the session waits.
+- `session.cdpUrl` is a WebSocket URL for the computer's Chrome, through the server, which keeps computers private. It works only while the session is open, and only for this session: keep it as secret as the key. Pass it to `chromium.connectOverCDP`, browser-use's `Browser(cdp_url=…)`, or Stagehand's `localBrowserLaunchOptions.cdpUrl`; the member's sign-ins are in Chrome's default context.
+- `session.liveViewUrl` opens live view of the computer for the member, signed in to the server in the same organization. While they take control, the session waits.
 - `session.exec(command)` runs a shell command as the desktop user, for up to 90 seconds.
-- `session.close()` ends the session and pauses the fork. An idle session's fork pauses after a minute, and the session ends after ten.
+- `session.close()` ends the session and pauses the computer. An idle session's computer pauses after a minute, and the session ends after ten.
 
-A CDP connection keeps the session in use and the fork running while it lasts. The server closes it shortly before its host's limit on one connection (five minutes on Vercel) with code 4000, and while the member has control in live view with code 4002; closed sessions get 4001. Chrome's tabs and sign-ins stay, so connect again with the same URL. `session.keepConnected` does it for you: it reconnects whenever the connection drops while the session is open, after the member hands back, and stops once the session ends.
+A CDP connection keeps the session in use and the computer running while it lasts. The server closes it shortly before its host's limit on one connection (five minutes on Vercel) with code 4000, and while the member has control in live view with code 4002; closed sessions get 4001. Chrome's tabs and sign-ins stay, so connect again with the same URL. `session.keepConnected` does it for you: it reconnects whenever the connection drops while the session is open, after the member hands back, and stops once the session ends.
 
 ```ts
 const connection = await session.keepConnected({
@@ -53,7 +53,7 @@ await session.close();
 
 ## Errors
 
-Every call throws `ClutchboxError` on a refusal, with the server's `code` and `status`: `unauthenticated` (a wrong or deleted key), `insufficient_scope`, `not_found` (no such member in the key's organization, or profile of theirs), `no_capture`, `profile_not_found` (that browser no longer syncs to the member), `session_not_found`, `session_ended`, `busy` (another session holds the fork; `busyUntil` says until when), `user_in_control`, `credit_exhausted`, `provider_account_refused` (the organization's own provider account refused its key; an owner or admin can update it), and `computer_unavailable`.
+Every call throws `ClutchboxError` on a refusal, with the server's `code` and `status`: `unauthenticated` (a wrong or deleted key), `insufficient_scope`, `not_found` (no such member in the key's organization, or profile of theirs), `no_capture`, `profile_not_found` (that browser no longer syncs to the member), `session_not_found`, `session_ended`, `busy` (another session holds the computer, or the member is at their limit and every computer is in use; `busyUntil` says until when, when known), `computer_not_found` (that computer was replaced or deleted), `user_in_control`, `credit_exhausted`, `provider_account_refused` (the organization's own provider account refused its key; an owner or admin can update it), and `computer_unavailable`.
 
 ## The REST API
 
@@ -63,9 +63,10 @@ All under `/api/v1`, with `Authorization: Bearer <key>`:
 | --- | --- |
 | `GET /members` | The organization's members. |
 | `GET /members/<id>/capture?profile=` | A member's latest capture, the default profile's or `profile`'s (`captures`). |
-| `POST /computers/sessions` | `{ member, computer?, session?, label?, profile?, screen? }`: opens a session (`computers`), switching the computer's screen to `screen` (`1440x900`, `1280x1024`, or `1920x1200`) when given. Answers `{ session, computer, cdpUrl, liveViewUrl, profile, profiles, sync, idlePauseSeconds }`, plus `screenUnchanged` when the computer predates screen sizes and keeps its own. |
+| `POST /computers/sessions` | `{ member, computer?, session?, label?, profile? }`: opens a session (`computers`), on a new computer without `computer` or `session`. Answers `{ session, computer, cdpUrl, liveViewUrl, profile, profiles, sync, idlePauseSeconds }`. |
 | `GET /computers/sessions/<id>` | `{ state }`: `open`, `user_in_control`, or `ended`. |
 | `POST /computers/sessions/<id>/exec` | `{ command, cwd?, timeoutSeconds? }`: `{ exitCode, stdout, stderr, truncated, timedOut }`. |
 | `DELETE /computers/sessions/<id>` | Closes the session. |
+| `DELETE /computers/<id>` | Deletes a computer and everything on it (`computers`). |
 
 A session belongs to the key that opened it: another key, even in the same organization, can't use it.

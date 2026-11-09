@@ -3,7 +3,7 @@ import type { ComputerSize, ScreenSize } from '@clutchbox/computer';
 import type { AgentKind } from '@clutchbox/server/agents';
 import type { ConnectedBrowser } from '@clutchbox/server/browsers';
 import { HEARTBEAT_MS } from '@clutchbox/server/computer-timing';
-import type { ForkView, LiveViewStatus } from '@clutchbox/server/computers';
+import type { ListedComputer, LiveViewStatus } from '@clutchbox/server/computers';
 import type { Role } from '@clutchbox/server/members';
 import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
@@ -25,23 +25,18 @@ export type ComputerView = {
   // This UTC month's running minutes of the member's computers and their MCP calls.
   // The billing period, as ISO times, with this member's computer minutes and MCP calls in it.
   period: { start: string; end: string; minutes: number; mcpCalls: number };
-  // The size the member chose; the main computer runs at its own, which a change of size resets onto the new one.
+  // The size the member's new computers start at; changing it leaves existing ones alone.
   size: ComputerSize;
-  // The screen size the member chose, which the main computer switches to and new forks start at.
+  // The screen size the member's new computers start at; changing it leaves existing ones alone.
   screen: ScreenSize;
   // Where the member's computers run: the organization's own provider account, or the deployment's.
   account: 'organization' | 'deployment';
-  computer: {
-    status: string;
-    size: ComputerSize;
-    // From before screen sizes: it keeps its own screen until reset.
-    screenFixed: boolean;
-    busy: boolean;
-    inLiveView: boolean;
-    appliedCaptureAt: string | null;
-  } | null;
-  // Agents' forks of it that are not paused, and the pinned ones, paused or not.
-  forks: ForkView[];
+  // The member's computers, most recently used first.
+  computers: ListedComputer[];
+  // How many the member may have.
+  limit: number;
+  // At the limit, the computer a new one would replace; null if the member is under it, or none can be replaced.
+  replaces: ListedComputer | null;
 };
 // One connected client. `agent` is known only from its client_id URL; `host` is where that URL points.
 export type Grant = {
@@ -123,21 +118,21 @@ export class ApiError extends Error {
 }
 
 export const computerQuery = queryOptions({ queryKey: ['computer'], queryFn: () => api<ComputerView>('/computer') });
-// Pins one of the member's forks under a name, or renames a pinned one; unpins one. Past the deployment's cap,
-// pinned_fork_limit (failure.tsx words it).
-export function usePinComputer() {
+// Makes a computer with no agent, left paused with the newest sign-ins. replace: the computer the member confirmed it
+// replaces, at the limit.
+export function useNewComputer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ computer, label }: { computer: string; label: string }) =>
-      api<{ pinned: true; label: string }>(`/computer/forks/${computer}/pin`, 'PUT', { label }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
+    mutationFn: (replace: string | undefined) =>
+      api<{ computerId: string }>('/computer/computers', 'POST', replace ? { replace } : {}),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
   });
 }
-export function useUnpinComputer() {
+export function useDeleteComputer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (computer: string) => api<{ pinned: false }>(`/computer/forks/${computer}/pin`, 'DELETE'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
+    mutationFn: (computer: string) => api<{ deleted: true }>(`/computer/computers/${computer}`, 'DELETE'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
   });
 }
 export const grantsQuery = queryOptions({
@@ -183,14 +178,14 @@ export type { LiveViewStatus };
 
 type HeartbeatStatuses = { 'live-view': LiveViewStatus };
 export type HeartbeatKind = keyof HeartbeatStatuses;
-// computer: one of the member's forks by ID; without it, the main computer.
-export type HeartbeatLease = { kind: HeartbeatKind; id: string; computer?: string | undefined };
+// computer: the ID of the member's computer the lease is on.
+export type HeartbeatLease = { kind: HeartbeatKind; id: string; computer: string };
 type HeartbeatState = 'visible' | 'hidden' | 'released';
 type HeartbeatResponse = { leases: { kind: HeartbeatKind; id: string; status: unknown }[] };
 
 const heartbeatKey = (leases: HeartbeatLease[]) => ['heartbeat', ...leases.map(({ kind, id }) => `${kind}:${id}`)];
 const heartbeatBody = (leases: HeartbeatLease[], state: HeartbeatState) => ({
-  leases: leases.map(({ kind, id, computer }) => ({ kind, id, state, ...(computer ? { computer } : {}) })),
+  leases: leases.map(({ kind, id, computer }) => ({ kind, id, state, computer })),
 });
 
 // Keeps the page's leases alive: a beat every HEARTBEAT_MS while the page is visible (TanStack Query pauses the
@@ -264,19 +259,16 @@ const setHeartbeatStatus =
     }));
   };
 
-// The body naming a live view lease, and the fork it is on (without one, the main computer).
-const leaseOn = (lease: string, computer: string | undefined) => ({ lease, ...(computer ? { computer } : {}) });
-
 // Take control for this page load's lease, or hand back. Each answers with the lease's live view status.
-export function useLiveViewControl(lease: string, computer: string | undefined, setStatus: SetStatus) {
+export function useLiveViewControl(lease: string, computer: string, setStatus: SetStatus) {
   return {
     takeOver: useLeaseMutation('/computer/takeover', lease, computer, setStatus),
     handBack: useLeaseMutation('/computer/hand-back', lease, computer, setStatus),
   };
 }
-function useLeaseMutation(path: string, lease: string, computer: string | undefined, setStatus: SetStatus) {
+function useLeaseMutation(path: string, lease: string, computer: string, setStatus: SetStatus) {
   return useMutation({
-    mutationFn: () => api<LiveViewStatus>(path, 'POST', leaseOn(lease, computer)),
+    mutationFn: () => api<LiveViewStatus>(path, 'POST', { lease, computer }),
     onSuccess: status => setStatus('live-view', lease, status),
   });
 }
@@ -285,17 +277,17 @@ function useLeaseMutation(path: string, lease: string, computer: string | undefi
 // to POST /computer/clipboard. An image goes as a PNG, with a ticket, to the API's origin (POST
 // /computer/clipboard/image), since the web app's platform may refuse a body that large (a Vercel Function over
 // 4.5 MB). Its errors carry a message to show.
-export function useLiveViewClipboard(lease: string, computer: string | undefined) {
+export function useLiveViewClipboard(lease: string, computer: string) {
   return useMutation({
     mutationFn: async (content: Pasted) => {
       if (typeof content === 'string')
-        return api('/computer/clipboard', 'POST', { ...leaseOn(lease, computer), text: content }).catch(error => {
+        return api('/computer/clipboard', 'POST', { lease, computer, text: content }).catch(error => {
           throw pasteError(error, 'Your clipboard holds more text than live view can paste (1 MB).');
         });
       const png = await asPng(content);
       if (!png) throw new Error("Live view can't paste this kind of image. Copy it as a PNG.");
       return (async () => {
-        const { url } = await api<{ url: string }>('/computer/clipboard/ticket', 'POST', leaseOn(lease, computer));
+        const { url } = await api<{ url: string }>('/computer/clipboard/ticket', 'POST', { lease, computer });
         const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'image/png' }, body: png });
         if (!response.ok) throw new ApiError(response.status, undefined, '');
       })().catch(error => {

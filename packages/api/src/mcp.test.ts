@@ -16,12 +16,12 @@ import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
 import { deleteCaptures } from '../../server/src/captures.ts';
 import {
   COMPUTER_ID_PATTERN,
-  deleteMainComputer,
+  deleteAllComputers,
   handBackComputer,
   liveViewStatus,
   openComputerSession,
-  pinFork,
   SESSION_ID_PATTERN,
+  setComputerScreen,
   takeOverComputer,
 } from '../../server/src/computers.ts';
 import type { ServerConfig } from '../../server/src/config.ts';
@@ -338,6 +338,7 @@ describe('remote MCP OAuth boundary', () => {
     expect(listed.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
       'computer_open',
       'computer_list',
+      'computer_delete',
       'computer_close',
       'computer_act',
       'browser',
@@ -583,7 +584,7 @@ describe('remote MCP OAuth boundary', () => {
   });
 });
 
-describe('main computer tools', () => {
+describe('computer tools', () => {
   const tool = (token: string, name: string, args: Record<string, unknown>, target = endpoint) =>
     target(
       new Request(resource, {
@@ -709,31 +710,30 @@ describe('main computer tools', () => {
     const taken = (await tool(chatgpt.access_token, 'computer_open', { computer_id: computerId })).result;
     expect(taken.structuredContent).toMatchObject({ computer_id: computerId, new_computer: false });
     expect(taken.structuredContent.computers).toEqual([
-      { computer_id: own.computer_id, label: null, pinned: false, last_used_at: expect.any(String), status: 'in_use' },
+      { computer_id: own.computer_id, label: null, last_used_at: expect.any(String), status: 'in_use' },
     ]);
-    // computer_list lists them all without opening one, a pinned computer by the user's name for it.
-    await pinFork(db, noLimits, await member(a.id), computerId, 'Q3 invoices');
+    // computer_list lists them all without opening one.
     const listed = (await tool(claude.access_token, 'computer_list', {})).result;
     expect(listed.isError).toBe(false);
     expect(listed.structuredContent).toEqual({
       computers: [
         {
           computer_id: computerId,
-          label: 'Q3 invoices',
-          pinned: true,
+          label: 'Invoices',
           last_used_at: expect.any(String),
           status: 'in_use',
         },
         {
           computer_id: own.computer_id,
           label: null,
-          pinned: false,
           last_used_at: expect.any(String),
           status: 'in_use',
         },
       ],
     });
     expect(initialized.result.instructions).toContain('computer_list');
+    expect(initialized.result.instructions).toContain('computer_delete');
+    expect(initialized.result.instructions).not.toMatch(/pinned|main computer|7 days/);
     // Once the user stops syncing, the next open signs the computer out of the sites it had synced, naming them.
     await deleteCaptures(db, await member(a.id));
     const signedOut = (
@@ -744,7 +744,7 @@ describe('main computer tools', () => {
       (await tool(chatgpt.access_token, 'computer_open', { computer_id: 'computer_unknown' })).result.structuredContent
         .error,
     ).toBe('computer_not_found');
-    // Revoking agents ends their sessions; reconnecting reaches the same main computer.
+    // Revoking agents ends their sessions; reconnecting opens a new computer.
     await revokeMcpGrants(db, await member(a.id));
     expect(
       (await call(claude.access_token, 'tools/call', { name: 'computer_act', arguments: { session_id: next } })).status,
@@ -752,7 +752,7 @@ describe('main computer tools', () => {
     expect(await db.select().from(schema.computerSessions).where(isNull(schema.computerSessions.endedAt))).toEqual([]);
     const renewed = (await authorize(a.cookie, await register()))!;
     expect((await tool(renewed.access_token, 'computer_open', {})).result.isError).toBe(false);
-    expect(fake.calls.create).toBe(1);
+    expect(fake.calls.create).toBe(3);
   });
   it("reports the metering hook's credit, in its words, on open and close", async () => {
     const usage = {
@@ -865,7 +865,7 @@ describe('main computer tools', () => {
       (await tool(token, 'computer_act', { session_id: named.session_id })).result.structuredContent,
     ).toMatchObject({ session_id: named.session_id });
   });
-  it("switches a computer's screen when asked, keeps it, and says when it can't", async () => {
+  it("starts a new computer at the user's screen, keeps it, and takes no screen argument", async () => {
     const fake = fakeComputerProvider();
     vi.stubEnv('CAPTURE_ENCRYPTION_KEY', randomBytes(32).toString('base64'));
     endpoint = createMcpEndpoint({ db, auth, origin, computers: fake.provider });
@@ -875,31 +875,69 @@ describe('main computer tools', () => {
     // A new computer starts at the user's screen choice, the default here.
     const opened = (await open({})).structuredContent;
     expect(opened.display).toEqual({ width: 1440, height: 900 });
-    expect(opened).not.toHaveProperty('screen_unchanged');
-    const tall = (await open({ session_id: opened.session_id, screen: '1280x1024' })).structuredContent;
-    expect(tall).toMatchObject({ computer_id: opened.computer_id, display: { width: 1280, height: 1024 } });
-    expect(tall).not.toHaveProperty('screen_unchanged');
-    // The computer keeps it, in screenshots and in later sessions.
+    expect(await open({ session_id: opened.session_id, screen: '1280x1024' })).toMatchObject({ isError: true });
+    // Reopening never changes its screen.
+    await setComputerScreen(db, await member(a.id), '1920x1200');
+    const kept = (await open({ session_id: opened.session_id })).structuredContent;
+    expect(kept.display).toEqual({ width: 1440, height: 900 });
+    expect(fake.calls.screens).toEqual(['1440x900']);
+    const next = (await open({})).structuredContent;
+    expect(next.display).toEqual({ width: 1920, height: 1200 });
+  });
+  it('makes a new computer at the limit by replacing the least recently used idle one, whose ID is then gone', async () => {
+    const fake = fakeComputerProvider();
+    vi.stubEnv('CAPTURE_ENCRYPTION_KEY', randomBytes(32).toString('base64'));
+    const limits = { ...noLimits, computers: async () => 1 };
+    endpoint = createMcpEndpoint({
+      db,
+      auth,
+      origin,
+      computers: fake.provider,
+      hooks: { metering: noMetering, operatorAdmin: noOperatorAdmin, limits },
+    });
+    const a = await identity('a');
+    const token = (await authorize(a.cookie, await register()))!.access_token;
+    const first = (await tool(token, 'computer_open', {})).result.structuredContent;
+    // In use, so a second can't replace it.
+    expect((await tool(token, 'computer_open', {})).result.structuredContent).toMatchObject({ error: 'busy' });
+    await tool(token, 'computer_close', { session_id: first.session_id });
+    const second = (await tool(token, 'computer_open', {})).result.structuredContent;
+    expect(second.new_computer).toBe(true);
+    expect(second.computer_id).not.toBe(first.computer_id);
+    expect(fake.calls.kill).toBe(1);
     expect(
-      (await tool(token, 'computer_act', { session_id: tall.session_id })).result.structuredContent.display,
-    ).toEqual({ width: 1280, height: 1024 });
-    const kept = (await open({ session_id: tall.session_id })).structuredContent;
-    expect(kept.display).toEqual({ width: 1280, height: 1024 });
-    expect(kept).not.toHaveProperty('screen_unchanged');
-    expect(fake.calls.screens).toEqual(['1440x900', '1280x1024']);
-    // Only the presets.
-    expect(await open({ session_id: kept.session_id, screen: '1024x768' })).toMatchObject({ isError: true });
-    expect(fake.calls.screens).toEqual(['1440x900', '1280x1024']);
-    // A computer from before screen sizes keeps its own, and the agent is told.
-    const sandbox = [...fake.sandboxes.values()].find(each => each.computerId === opened.computer_id)!;
-    Object.assign(sandbox, { screen: { width: 1280, height: 800 }, desktop: { width: 1280, height: 800 } });
-    const legacy = (await open({ session_id: kept.session_id, screen: '1920x1200' })).structuredContent;
-    expect(legacy).toMatchObject({ display: { width: 1280, height: 800 }, screen_unchanged: expect.any(String) });
-    // A failed switch leaves the screen as it was, and the computer still opens.
-    Object.assign(sandbox, { desktop: { width: 1920, height: 1200 } });
-    fake.failScreen();
-    const failed = (await open({ session_id: legacy.session_id, screen: '1920x1200' })).structuredContent;
-    expect(failed).toMatchObject({ display: { width: 1280, height: 800 }, screen_unchanged: expect.any(String) });
+      (await tool(token, 'computer_open', { computer_id: first.computer_id })).result.structuredContent.error,
+    ).toBe('computer_not_found');
+  });
+  it('deletes a computer by its ID, refusing one another agent holds and answering computer_not_found after', async () => {
+    const fake = fakeComputerProvider();
+    endpoint = createMcpEndpoint({ db, auth, origin, computers: fake.provider });
+    const a = await identity('a');
+    const b = await identity('b');
+    const claude = (await authorize(a.cookie, await register()))!;
+    const chatgpt = (await authorize(a.cookie, await register()))!;
+    const outsider = (await authorize(b.cookie, await register()))!;
+    const del = (token: string, computer_id: string) => tool(token, 'computer_delete', { computer_id });
+    const opened = (await tool(claude.access_token, 'computer_open', {})).result.structuredContent;
+    const id = opened.computer_id;
+    expect((await del(outsider.access_token, id)).result.structuredContent.error).toBe('computer_not_found');
+    expect((await del(chatgpt.access_token, id)).result.structuredContent).toMatchObject({
+      error: 'busy',
+      busy_until: expect.any(String),
+    });
+    expect(await del(claude.access_token, 'not-a-computer')).toMatchObject({ result: { isError: true } });
+    expect(fake.calls.kill).toBe(0);
+    // The holder's own session ends with it.
+    expect((await del(claude.access_token, id)).result.structuredContent).toEqual({ deleted: true });
+    expect(fake.calls.kill).toBe(1);
+    expect((await tool(claude.access_token, 'computer_open', { computer_id: id })).result.structuredContent.error).toBe(
+      'computer_not_found',
+    );
+    expect(
+      (await tool(claude.access_token, 'computer_act', { session_id: opened.session_id })).result.structuredContent
+        .error,
+    ).toBe('session_not_found');
+    expect((await del(claude.access_token, id)).result.structuredContent.error).toBe('computer_not_found');
   });
   it('tells an agent the user took control, shows it waiting, and says so once after the hand-back', async () => {
     const fake = fakeComputerProvider();
@@ -919,10 +957,10 @@ describe('main computer tools', () => {
     const opened = (await tool(claude.access_token, 'computer_open', {})).result.structuredContent;
     const id = opened.session_id;
     // The user takes over the agent's computer, say to pass a bot check for it.
-    const fork = { computerId: opened.computer_id };
+    const target = { computerId: opened.computer_id };
     const page = randomUUID();
     expect(
-      await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, fork),
+      await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, target),
     ).toMatchObject({
       takeover: { mine: true },
     });
@@ -930,16 +968,16 @@ describe('main computer tools', () => {
     expect(waiting).toMatchObject({ isError: true, structuredContent: { error: 'user_in_control' } });
     expect(waiting.structuredContent.message).toContain('session_id');
     expect(waiting.structuredContent.busy_until).toBeUndefined();
-    const busy = (await tool(chatgpt.access_token, 'computer_open', { computer_id: fork.computerId })).result;
+    const busy = (await tool(chatgpt.access_token, 'computer_open', { computer_id: target.computerId })).result;
     expect(busy).toMatchObject({ isError: true, structuredContent: { error: 'busy' } });
     expect(busy.structuredContent.busy_until).toBeUndefined();
     // The recorded user_in_control call is what the live view shows as a waiting agent.
     expect(
-      (await liveViewStatus(db, noMetering, await member(a.id), page, undefined, fork)).agentWaiting,
+      (await liveViewStatus(db, noMetering, await member(a.id), page, undefined, target)).agentWaiting,
     ).toMatchObject({
       since: expect.any(String),
     });
-    await handBackComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, fork);
+    await handBackComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, target);
     const back = (await tool(claude.access_token, 'computer_act', { session_id: id })).result;
     expect(back.isError).toBe(false);
     expect(back.structuredContent).toMatchObject({
@@ -949,8 +987,8 @@ describe('main computer tools', () => {
     const after = (await tool(claude.access_token, 'computer_act', { session_id: id })).result;
     expect(after.structuredContent.user_had_control).toBeUndefined();
     // A reopen with the session_id right after a hand-back says so too.
-    await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, fork);
-    await handBackComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, fork);
+    await takeOverComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, target);
+    await handBackComputer(db, { provider: fake.provider, metering: noMetering }, await member(a.id), page, target);
     const reopened = (await tool(claude.access_token, 'computer_open', { session_id: id })).result;
     expect(reopened.structuredContent).toMatchObject({
       user_had_control: { message: expect.stringContaining('screenshot') },
@@ -1244,17 +1282,18 @@ describe('main computer tools', () => {
         expect((await info.json()).state).toBe('paused');
         // A second agent is busy while the first holds control, and takes over after its idle minute.
         const other = (await authorize(a.cookie, await register()))!.access_token;
-        const held = (await tool(token, 'computer_open', {})).result.structuredContent.session_id;
-        expect((await tool(other, 'computer_open', {})).result.structuredContent.error).toBe('busy');
+        const again = { computer_id: computer!.publicId };
+        const held = (await tool(token, 'computer_open', again)).result.structuredContent.session_id;
+        expect((await tool(other, 'computer_open', again)).result.structuredContent.error).toBe('busy');
         await new Promise(resolve => setTimeout(resolve, 62_000));
-        const taken = (await tool(other, 'computer_open', {})).result.structuredContent.session_id;
+        const taken = (await tool(other, 'computer_open', again)).result.structuredContent.session_id;
         expect(taken).toMatch(SESSION_ID_PATTERN);
         expect((await tool(token, 'computer_act', { session_id: held })).result.structuredContent.error).toBe(
           'session_ended',
         );
         expect((await tool(other, 'computer_close', { session_id: taken })).result.isError).toBe(false);
       } finally {
-        await deleteMainComputer(db, { provider }, await member(a.id));
+        await deleteAllComputers(db, { provider }, await member(a.id));
       }
     },
     360_000,
@@ -1476,7 +1515,7 @@ describe('agent connections and setup', () => {
     expect(await db.select().from(schema.oauthConsent)).toEqual([]);
   });
   it('never lets a call that was in flight during a disconnect take the computer', async () => {
-    // One provider, so its snapshot IDs stay unique in the database.
+    // One provider, so its computer IDs stay unique in the database.
     const fake = fakeComputerProvider();
     for (const [user, revoke] of [
       ['a', async (userId: string, client: string) => revokeMcpGrant(db, await member(userId), client)],

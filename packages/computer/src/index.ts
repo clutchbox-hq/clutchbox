@@ -73,7 +73,7 @@ export type ComputerAction = z.infer<typeof actionSchema>;
 // Computer sizes. People see each by its spec (2 vCPU · 4 GB, sizeName); the keys are stored identifiers only. Two CPUs
 // and 4 GB, the default, run Chrome on real pages; the larger size is for heavier sites and more tabs. An 8 CPU size
 // was dropped unused: E2B caps memory at 8 GB, so it added CPUs that Chrome alone rarely keeps busy. A computer keeps
-// the size it was created at, and a fork its main computer's, since a fork starts from the main computer's memory.
+// the size it was created at.
 export const COMPUTER_SIZES = {
   '1x': { cpuCount: 2, memoryMB: 4096 },
   '2x': { cpuCount: 4, memoryMB: 8192 },
@@ -184,15 +184,6 @@ export interface ComputerProvider {
   find(computerId: string): Promise<string | null>;
   // timeoutMs: the provider pauses the computer this long after the call unless called again.
   create(computerId: string, timeoutMs: number, size: ComputerSize): Promise<string>;
-  // A fork: a new computer from a snapshot, with its memory, so the browser runs as it did when the snapshot was
-  // taken, at the size of the computer it was taken from. Paused after timeoutMs like create, and found by its own
-  // computerId.
-  createFromSnapshot(snapshotId: string, computerId: string, timeoutMs: number): Promise<string>;
-  // Snapshots a computer's memory and disk and returns the snapshot's ID. A paused computer is resumed first and then
-  // runs until timeoutMs from now; a running one pauses briefly, and every connection to it drops.
-  snapshot(sandboxId: string, timeoutMs: number): Promise<string>;
-  // Deletes a snapshot. Fails while any computer made from it remains, running or paused.
-  deleteSnapshot(snapshotId: string): Promise<void>;
   // Resumes a paused computer; on a running one it only ever extends the timeout.
   connect(sandboxId: string, timeoutMs: number): Promise<ComputerSession>;
   pause(sandboxId: string): Promise<void>;

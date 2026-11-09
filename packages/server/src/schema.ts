@@ -158,9 +158,6 @@ export const organizations = pgTable(
     // The most computer time past its credit the deployment's metering hook may charge this organization in a billing period, in
     // US cents, which its owners can change; null for the deployment's default.
     overageLimitCents: integer('overage_limit_cents'),
-    // Forks that may run at once across the organization's members (computers.ts, openComputerSession); null for the
-    // deployment's limit (hooks.ts, Limits.runningForks), else DEFAULT_MAX_RUNNING_FORKS.
-    maxRunningForks: integer('max_running_forks'),
     // The plan a deployment's operators put the organization on, which its hooks read: 'paid', or null for the
     // deployment's default. The product itself has no plans. plan_ended_at is when the last one ended, for what the
     // deployment keeps after.
@@ -174,7 +171,6 @@ export const organizations = pgTable(
     check('organizations_name', sql`char_length(${table.name}) BETWEEN 1 AND 100`),
     check('organizations_computer_minutes', sql`${table.computerMinutes} >= 0`),
     check('organizations_overage_limit_cents', sql`${table.overageLimitCents} >= 0`),
-    check('organizations_max_running_forks', sql`${table.maxRunningForks} >= 0`),
     check('organizations_plan', oneOf(table.plan, ORGANIZATION_PLANS)),
   ],
 );
@@ -193,11 +189,10 @@ export const memberships = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: text('role', { enum: MEMBER_ROLES }).notNull(),
-    // The size the member's next main computer is created at (COMPUTER_SIZES). Changing it resets the main computer,
-    // since a computer keeps its size.
+    // The size the member's new computers are created at (COMPUTER_SIZES). Changing it affects only new ones, since a
+    // computer keeps its size.
     computerSize: text('computer_size', { enum: COMPUTER_SIZE_NAMES }).notNull().default('1x'),
-    // The screen size the member chose for their computers (SCREENS): the main computer switches to it without a
-    // reset, and each new fork starts at it.
+    // The screen size the member's new computers start at (SCREENS). Changing it affects only new ones.
     computerScreen: text('computer_screen', { enum: SCREEN_NAMES }).notNull().default(DEFAULT_SCREEN),
     ...timestamps(),
   },
@@ -239,7 +234,7 @@ export const organizationInvitations = pgTable(
   ],
 );
 // What an organization API key may do (api-keys.ts), as its permissions. captures: read any member's latest capture;
-// computers: open computer sessions for any member, on forks of their computer, and drive them over CDP.
+// computers: open computer sessions for any member on their computers, and drive them over CDP.
 export const API_KEY_SCOPES = ['captures', 'computers'] as const;
 // A person connected to an organization's app through Connect (connect.ts): the app's OAuth client, the member, and
 // the app's own ID for them. It goes with either.
@@ -266,33 +261,23 @@ export const connections = pgTable(
 const membershipId = () => key('membership_id').references(() => memberships.id, { onDelete: 'cascade' });
 
 export const COMPUTER_STATUSES = ['creating', 'ready'] as const;
-// A member's computers: one persistent main computer, changed only by the member's takeover, and the forks agents
-// work in, each a copy of main from one of its snapshots (computers.ts, Forks). Agents never control main.
+// A member's computers (computers.ts, Computers): each made from the template for one task, up to the member's cap,
+// with the latest capture applied on every open.
 export const computers = pgTable(
   'computers',
   {
     id: id(),
-    // Also the provider's idempotency key and the applied capture's associated data, so it never changes. A fork's is
-    // the opaque ID agents reopen it by.
+    // Also the provider's idempotency key and the applied capture's associated data, so it never changes, and the
+    // opaque ID agents reopen it by.
     publicId: text('public_id').notNull().unique(),
     membershipId: membershipId().notNull(),
-    // A fork's main computer; null on main.
-    forkOf: key('fork_of').references((): AnyPgColumn => computers.id, { onDelete: 'cascade' }),
-    // Main: its latest snapshot, which new forks start from. A fork: the snapshot it was made from, which the provider
-    // keeps until the fork is deleted.
-    snapshotId: key('snapshot_id').references((): AnyPgColumn => computerSnapshots.id, { onDelete: 'set null' }),
-    // Main: when a takeover ended after its latest snapshot, so the next fork needs a new one first.
-    snapshotDueAt: time('snapshot_due_at'),
-    // A fork's name from the agent that made it, or the member's for a pinned fork, listed in computer_open's results.
+    // Its name from the agent that made it, listed in computer_open's results; null without one.
     label: text('label'),
-    // A fork's latest open or call; one unused for FORK_UNUSED_MS is deleted, unless pinned.
+    // Its latest open or call: replacement at the member's cap takes the least recently used first. Always set on new
+    // rows; null only on computers from before this, which count as used when they were created.
     lastUsedAt: time('last_used_at'),
-    // When the member pinned the fork (computers.ts, pinFork): it keeps its label as its name and is never deleted for
-    // disuse. Only a fork with a label is pinned.
-    pinnedAt: time('pinned_at'),
     status: text('status', { enum: COMPUTER_STATUSES }).notNull().default('creating'),
-    // The size it was created at, which metering charges by: the member's choice for a main computer, and its main
-    // computer's for a fork.
+    // The size it was created at (memberships.computerSize then), which metering charges by.
     size: text('size', { enum: COMPUTER_SIZE_NAMES }).notNull().default('1x'),
     sandboxId: text('sandbox_id'),
     // Before profiles, the one apply baseline (computer_profiles has one per profile). Read and written only by code
@@ -315,11 +300,6 @@ export const computers = pgTable(
       .default(sql`'{}'::jsonb`),
     // The system time zone last set on the computer (computers.ts, applyTimeZone); null is the template's UTC.
     timeZone: text('time_zone'),
-    // Main: the member's screen choice last switched to (computers.ts, applyMainScreen); null is the template's
-    // DEFAULT_SCREEN. screenFixedAt: when a switch found the desktop too small, as on a computer from before screen
-    // sizes, which then keeps its own screen until reset.
-    screen: text('screen', { enum: SCREEN_NAMES }),
-    screenFixedAt: time('screen_fixed_at'),
     // The helper revision the computer was last brought to (computers.ts, refreshComputer); null until an open
     // checks it. Lets an open skip the check once the computer is current.
     revision: text('revision'),
@@ -341,22 +321,10 @@ export const computers = pgTable(
     ...timestamps(),
   },
   table => [
-    uniqueIndex('computers_main_unique').on(table.membershipId).where(sql`${table.forkOf} IS NULL`),
     index('computers_membership_idx').on(table.membershipId),
-    index('computers_fork_of_idx').on(table.forkOf),
-    index('computers_snapshot_idx').on(table.snapshotId),
     check('computers_status', oneOf(table.status, COMPUTER_STATUSES)),
     check('computers_size', oneOf(table.size, COMPUTER_SIZE_NAMES)),
-    check('computers_screen', oneOf(table.screen, SCREEN_NAMES)),
     check('computers_label', sql`char_length(${table.label}) BETWEEN 1 AND 100`),
-    check(
-      'computers_fork',
-      sql`${table.forkOf} IS NULL OR (${table.snapshotDueAt} IS NULL AND ${table.lastUsedAt} IS NOT NULL)`,
-    ),
-    check(
-      'computers_pinned',
-      sql`${table.pinnedAt} IS NULL OR (${table.forkOf} IS NOT NULL AND ${table.label} IS NOT NULL)`,
-    ),
     check('computers_time_zone', timeZoneName(table.timeZone)),
     check(
       'computers_takeover',
@@ -364,40 +332,16 @@ export const computers = pgTable(
     ),
   ],
 );
-// Snapshots of a main computer (computers.ts, Forks), each with what main had applied when it was taken, which a fork
-// made from it starts with: its profiles' apply baselines (computer_profiles), helper revision, and time zone. Kept
-// while main's latest or while a fork made from it remains, since the provider refuses to delete a snapshot before
-// that; then deleted at the provider and here. The applied_capture columns are from before profiles, like computers'.
-export const computerSnapshots = pgTable(
-  'computer_snapshots',
-  {
-    id: id(),
-    computerId: key('computer_id')
-      .notNull()
-      .references((): AnyPgColumn => computers.id, { onDelete: 'cascade' }),
-    providerSnapshotId: text('provider_snapshot_id').notNull().unique(),
-    appliedCaptureDigest: text('applied_capture_digest'),
-    appliedCaptureAt: time('applied_capture_at'),
-    syncedSites: text('synced_sites').array().notNull().default(sql`'{}'::text[]`),
-    appliedCapture: text('applied_capture'),
-    timeZone: text('time_zone'),
-    revision: text('revision'),
-    createdAt: createdAt(),
-  },
-  table => [index('computer_snapshots_computer_idx').on(table.computerId)],
-);
-// A connected browser's Chrome profile on one of the member's computers, or as a snapshot of main had it (computers.ts,
-// Profiles): its directory there (chrome_profile, the provider's profile name), the last capture of the browser's
-// applied to it, the sites that wrote (cleared when absent later), and its cookies sealed (captures.ts,
-// sealAppliedCapture, for the computer's public ID; a snapshot's for main's) as the baseline the next apply diffs
-// against. A null baseline makes the next apply replace each target site wholesale. Kept once the browser stops
-// syncing, so the next open can clear its sites and nobody else gets its directory.
+// A connected browser's Chrome profile on one of the member's computers (computers.ts, Profiles): its directory there
+// (chrome_profile, the provider's profile name), the last capture of the browser's applied to it, the sites that wrote
+// (cleared when absent later), and its cookies sealed (captures.ts, sealAppliedCapture, for the computer's public ID) as
+// the baseline the next apply diffs against. A null baseline makes the next apply replace each target site wholesale.
+// Kept once the browser stops syncing, so the next open can clear its sites and nobody else gets its directory.
 export const computerProfiles = pgTable(
   'computer_profiles',
   {
     id: id(),
     computerId: key('computer_id').references((): AnyPgColumn => computers.id, { onDelete: 'cascade' }),
-    snapshotId: key('snapshot_id').references((): AnyPgColumn => computerSnapshots.id, { onDelete: 'cascade' }),
     connectedBrowserId: key('connected_browser_id')
       .notNull()
       .references((): AnyPgColumn => connectedBrowsers.id, { onDelete: 'cascade' }),
@@ -415,9 +359,7 @@ export const computerProfiles = pgTable(
   table => [
     unique('computer_profiles_computer_browser_unique').on(table.computerId, table.connectedBrowserId),
     unique('computer_profiles_computer_chrome_profile_unique').on(table.computerId, table.chromeProfile),
-    unique('computer_profiles_snapshot_browser_unique').on(table.snapshotId, table.connectedBrowserId),
     index('computer_profiles_connected_browser_idx').on(table.connectedBrowserId),
-    check('computer_profiles_owner', sql`(${table.computerId} IS NULL) <> (${table.snapshotId} IS NULL)`),
     check('computer_profiles_chrome_profile', sql`${table.chromeProfile} ~ '^[a-z0-9_]{1,64}$'`),
   ],
 );
@@ -464,7 +406,7 @@ export const computerSessions = pgTable(
     check('computer_sessions_ended', sql`(${table.endedAt} IS NULL) = (${table.endReason} IS NULL)`),
   ],
 );
-// download: only on calls recorded before computer_download was removed.
+// snapshot and download: only on calls recorded by earlier versions.
 export const TOOL_CALL_STEPS = [
   'snapshot',
   'create',

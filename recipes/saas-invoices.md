@@ -20,7 +20,7 @@ Settings (change these to suit you):
 - Folder: ~/Invoices/<YYYY-MM> on the computer.
 
 Steps:
-1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork, and tell me to pin it in the Clutchbox Dashboard so the folder is kept.
+1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork.
 2. For each billing page, find the account's billing or invoice history from its settings. If the site has several workspaces or organizations, check each one I pay for.
 3. Download every invoice or receipt dated in the month as a PDF. If one has no download, open it and save it as a PDF with the browser's Print (Save as PDF).
 4. With computer_exec, move the files from ~/Downloads into the folder, named "<date> <vendor> <amount> <currency>.pdf", and write summary.csv there with the columns vendor, date, invoice number, amount, currency, and file.
@@ -37,5 +37,5 @@ Ground rules:
 
 ## Notes
 
-- The PDFs stay on your pinned Paperwork computer; watch it in live view to check them.
+- The PDFs stay on your Paperwork computer until you delete it or it is replaced at your limit of computers; watch it in live view to check them.
 - GitHub asks you to confirm your password before some billing settings. If it does, the agent stops and names the page instead of typing it.

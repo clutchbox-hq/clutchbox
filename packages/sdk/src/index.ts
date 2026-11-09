@@ -2,7 +2,7 @@ import { type Capture, captureSchema } from '@clutchbox/capture';
 
 // The Clutchbox TypeScript SDK: the developer REST API (/api/v1) of a Clutchbox server, under an organization API key
 // (`ack_…`) that an owner or admin creates on its Developers page. Read a member's latest synced sign-ins, or open a
-// computer session for a member on a fork of their computer, already signed in, and drive its Chrome from your own
+// computer session for a member on a computer of theirs, already signed in, and drive its Chrome from your own
 // framework over the session's CDP URL.
 
 export type ClientOptions = {
@@ -64,8 +64,7 @@ export type SessionState = 'open' | 'user_in_control' | 'ended';
 export type OpenOptions = {
   // The member's ID, from members.list().
   member: string;
-  // A computer to reopen as it was left, by the ID an earlier session returned; without it, a new copy of the member's
-  // computer.
+  // A computer to reopen as it was left, by the ID an earlier session returned; without it, a new computer.
   computer?: string;
   // Your current session on that computer, to replace without waiting out its idle minute.
   session?: string;
@@ -74,9 +73,6 @@ export type OpenOptions = {
   // The profile to use, by its ID from a session's profiles. Without it, a reopened computer keeps the profile it had,
   // and a new one gets the default.
   profile?: string;
-  // The screen size to switch the computer to, in pixels; without it, the computer keeps its own, and a new one starts
-  // at 1440x900.
-  screen?: '1440x900' | '1280x1024' | '1920x1200';
 };
 
 type SessionAnswer = {
@@ -90,8 +86,6 @@ type SessionAnswer = {
   sync: SyncSummary;
   idlePauseSeconds: number;
   userHadControl?: boolean;
-  // The screen asked for could not be set: the computer predates screen sizes and keeps its own.
-  screenUnchanged?: boolean;
 };
 
 // How often a kept connection checks whether the member handed back, and the most it waits between failed
@@ -134,6 +128,11 @@ export function createClient(options: ClientOptions) {
     close: async (sessionId: string) => {
       await call('DELETE', session(sessionId));
     },
+    // Deletes one of a member's computers, with everything on it. Throws busy while another session holds it or the
+    // member has taken it over.
+    delete: async (computerId: string) => {
+      await call('DELETE', `/computers/${encodeURIComponent(computerId)}`);
+    },
   };
   return {
     members: {
@@ -174,7 +173,7 @@ export type Connection<T> = {
   readonly done: Promise<void>;
 };
 
-// One computer session, on a fork of the member's computer. Drive its Chrome over cdpUrl, which only this session can
+// One computer session, on one of the member's computers. Drive its Chrome over cdpUrl, which only this session can
 // use and which works while it is open; send the member liveViewUrl to watch or take control. The CDP connection holds
 // the session, and the computer runs, while it lasts. The server closes it before its host's time limit (code 4000), or
 // while the member has control (4002), and the session goes on: connect again with the same URL, or let keepConnected
@@ -188,7 +187,6 @@ export class ComputerSession {
   readonly profiles: Profile[];
   readonly sync: SyncSummary;
   readonly userHadControl: boolean;
-  readonly screenUnchanged: boolean;
   private closed = false;
 
   private readonly computers: Computers;
@@ -202,7 +200,6 @@ export class ComputerSession {
     this.profiles = answer.profiles;
     this.sync = answer.sync;
     this.userHadControl = !!answer.userHadControl;
-    this.screenUnchanged = !!answer.screenUnchanged;
   }
 
   exec(command: string, options?: { cwd?: string; timeoutSeconds?: number }) {

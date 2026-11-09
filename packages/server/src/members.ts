@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { removeAllBrowsers } from './browsers.ts';
 import { destroyProviderComputers, type Providers, providerFor } from './computers.ts';
 import type { Database } from './database.ts';
@@ -204,11 +204,11 @@ type Check = (tx: Transaction) => Promise<MembersFailure | null>;
 // Ends a membership and everything it had in the organization: its browsers are removed and its agents' tokens
 // revoked first, so nothing can sync to it or act as it (the browsers stay signed in to the person's other
 // organizations), then the membership, whose rows (captures, settings, setup, browsers, computer, sessions,
-// tool calls, usage) go with it, then its computers and their snapshots at the provider. `check` runs under the organization's lock before
+// tool calls, usage) go with it, then its computers at the provider. `check` runs under the organization's lock before
 // anything changes, and again in the transaction that deletes the membership, so two owners leaving at once cannot
 // leave it without one; a refusal only that second time (a race) leaves the member in, with tokens to reconnect. The
 // computer rows are locked while the membership goes, so a create in flight finds no row to record its computer in and
-// kills it (computers.ts, ensureComputer and provisionFork).
+// kills it (computers.ts, provisionComputer).
 async function endMembership(db: Database, providers: Providers, member: Member, check: Check) {
   const refused = await db.transaction(async tx => {
     await lockOrganization(tx, member.organizationId);
@@ -226,23 +226,12 @@ async function endMembership(db: Database, providers: Providers, member: Member,
       .from(schema.computers)
       .where(eq(schema.computers.membershipId, member.membershipId))
       .for('update');
-    const snapshots = computers.length
-      ? await tx
-          .select({ id: schema.computerSnapshots.providerSnapshotId })
-          .from(schema.computerSnapshots)
-          .where(
-            inArray(
-              schema.computerSnapshots.computerId,
-              computers.map(computer => computer.id),
-            ),
-          )
-      : [];
     await tx.delete(schema.memberships).where(eq(schema.memberships.id, member.membershipId));
-    return { computers, snapshots: snapshots.map(snapshot => snapshot.id) };
+    return { computers };
   });
   if ('error' in ended) return ended;
   const { provider } = await providerFor(providers, db, member.organizationId);
-  await destroyProviderComputers(provider, ended.computers, ended.snapshots);
+  await destroyProviderComputers(provider, ended.computers);
   return null;
 }
 

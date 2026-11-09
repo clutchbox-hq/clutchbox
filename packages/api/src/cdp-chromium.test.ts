@@ -10,7 +10,7 @@ import { useDeveloperApi } from './developer-api-fixtures.ts';
 // The CDP proxy in front of a real Chromium, driven by Playwright through a REST computer session's CDP URL
 // (developer-api-fixtures.ts). Its own file, since it needs Chromium installed (bunx playwright-core install chromium).
 const developer = useDeveloperApi();
-const { opened, forkRow } = developer;
+const { opened, computerRow } = developer;
 
 describe('the CDP proxy in front of a real Chromium', () => {
   let chrome: ChildProcess;
@@ -40,22 +40,22 @@ describe('the CDP proxy in front of a real Chromium', () => {
     chrome.kill();
   });
 
-  it("lets Playwright drive the fork's Chrome, holding the session while connected, until it is closed", async () => {
+  it("lets Playwright drive the computer's Chrome, holding the session while connected, until it is closed", async () => {
     const { session } = await opened();
     developer.fake.setCdpUrl(chromeUrl);
     const browser = await chromium.connectOverCDP(session.cdpUrl);
     const disconnected = new Promise(resolve => browser.once('disconnected', resolve));
     const page = await browser.contexts()[0]!.newPage();
-    await page.setContent('<title>On the fork</title>');
-    expect(await page.title()).toBe('On the fork');
+    await page.setContent('<title>On the computer</title>');
+    expect(await page.title()).toBe('On the computer');
     // The connection is one call of the session, holding control until the platform's limit at most.
-    const [call] = Object.values((await forkRow(session.computer.id)).callsInFlight);
+    const [call] = Object.values((await computerRow(session.computer.id)).callsInFlight);
     expect(Date.parse(call!.until) - Date.now()).toBeGreaterThan(CDP_MAX_DURATION_MS - 30_000);
     expect(await session.state()).toBe('open');
     await page.close();
     // Closing the session ends the connection at the next re-check, and its call.
     await session.close();
     await disconnected;
-    await vi.waitFor(async () => expect((await forkRow(session.computer.id)).callsInFlight).toEqual({}));
+    await vi.waitFor(async () => expect((await computerRow(session.computer.id)).callsInFlight).toEqual({}));
   });
 });

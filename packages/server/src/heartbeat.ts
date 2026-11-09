@@ -6,8 +6,8 @@ import type { Member } from './organizations.ts';
 
 // The general-purpose heartbeat: a page reports each lease it holds, by kind, to
 // POST /api/v1/heartbeat, and each kind's handler keeps its own state where its logic lives, writing only when a
-// deadline or state changes, and returns the lease's status. There is no heartbeat table. A lease may name which of
-// the member's computers it is on (a fork's public ID); without one, it is on the main computer.
+// deadline or state changes, and returns the lease's status. There is no heartbeat table. A lease names which of
+// the member's computers it is on, by public ID.
 export const HEARTBEAT_STATES = ['visible', 'hidden', 'released'] as const;
 export type HeartbeatState = (typeof HEARTBEAT_STATES)[number];
 export type HeartbeatDeps = Computers;
@@ -15,7 +15,7 @@ export type HeartbeatHandler = (
   db: Database,
   deps: HeartbeatDeps,
   member: Member,
-  lease: { id: string; state: HeartbeatState; computer?: string | undefined },
+  lease: { id: string; state: HeartbeatState; computer: string },
   now: Date,
 ) => Promise<unknown>;
 
@@ -36,7 +36,7 @@ export const heartbeatSchema = z
             kind: z.enum(HEARTBEAT_KINDS),
             id: z.uuid(),
             state: z.enum(HEARTBEAT_STATES),
-            computer: z.string().regex(COMPUTER_ID_PATTERN).optional(),
+            computer: z.string().regex(COMPUTER_ID_PATTERN),
           })
           .strict(),
       )

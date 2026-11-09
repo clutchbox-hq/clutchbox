@@ -15,6 +15,7 @@ import {
 } from '@clutchbox/capture';
 import {
   apiKeyPrincipal,
+  computerCallerForComputer,
   computerCallerForMember,
   computerCallerForSession,
   isApiKeyAuthorization,
@@ -60,12 +61,13 @@ import {
   closeComputerSession,
   computerSessionState,
   computerView,
-  deleteMainComputer,
+  createPausedComputer,
+  deleteAllComputers,
+  deleteComputer,
   handBackComputer,
   issueCdpToken,
   MAX_CLIPBOARD_IMAGE_BYTES,
   openComputerSession,
-  pinFork,
   SCREEN_NAMES,
   SESSION_ID_PATTERN,
   type SessionHandle,
@@ -73,7 +75,6 @@ import {
   setComputerSize,
   setLiveViewClipboard,
   takeOverComputer,
-  unpinFork,
   useComputerSession,
 } from '@clutchbox/server/computers';
 import type { SignInMethods } from '@clutchbox/server/config';
@@ -133,7 +134,8 @@ type Principal = {
 };
 // Or, on the developer REST routes alone (KEY_PATH), an organization API key, which acts for its organization.
 type Env = { Variables: { principal: Principal; apiKey?: KeyPrincipal } };
-const KEY_PATH = /^\/api\/v1\/(members(\/[^/]+\/capture)?|connections|computers\/sessions(\/[^/]+(\/exec)?)?)$/;
+const KEY_PATH =
+  /^\/api\/v1\/(members(\/[^/]+\/capture)?|connections|computers\/sessions(\/[^/]+(\/exec)?)?|computers\/[^/]+)$/;
 // A deployment's own routes, added after the shared middleware so they get its session, origin, and header handling.
 // The deployment's provider comes too, for routes that act on the computers it runs.
 export type ApiExtension = (app: Hono<Env>, services: { db: Database; computers: ComputerProvider }) => void;
@@ -145,7 +147,7 @@ export const MAX_CAPTURE_BYTES = 4_000_000;
 export const MIN_EXTENSION_VERSION = '0.0.0';
 
 // A computer service's refusal (cdp.ts, failureStatus): the credit used up is the user's to wait out (403, with
-// when it resets), and the organization's own provider account refused is its owners' to fix (403); a fork that is
+// when it resets), and the organization's own provider account refused is its owners' to fix (403); a computer that is
 // gone is 404; a computer starting or being reset elsewhere is worth retrying (409).
 function computerFailure(c: Context<Env>, failure: ComputerFailure) {
   return c.json(failureBody(failure), failureStatus(failure));
@@ -502,8 +504,8 @@ export function createApi({
       );
     return c.json(result);
   });
-  // Computer sessions for a member, under a key with the computers scope (api-keys.ts): each on a fork of the member's
-  // computer, like an MCP agent's, on one of the member's profiles, and owned by the key. The answer to open carries the
+  // Computer sessions for a member, under a key with the computers scope (api-keys.ts): each on one of the member's
+  // computers, like an MCP agent's, on one of the member's profiles, and owned by the key. The answer to open carries the
   // session's CDP URL, which the CDP proxy serves (cdp.ts), the live-view link the member watches or takes over from,
   // and the member's profiles, to name one in a later open.
   const keyFailure = (
@@ -535,12 +537,11 @@ export function createApi({
           session: z.string().regex(SESSION_ID_PATTERN).optional(),
           label: z.string().trim().min(1).max(100).optional(),
           profile: z.string().regex(BROWSER_ID_PATTERN).optional(),
-          screen: z.enum(SCREEN_NAMES).optional(),
         })
         .strict(),
     );
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
-    const { member, computer, session, label, profile, screen } = parsed.data;
+    const { member, computer, session, label, profile } = parsed.data;
     const caller = await computerCallerForMember(db, keyOf(c), member);
     if ('error' in caller) return keyFailure(c, caller);
     let handle: SessionHandle | undefined;
@@ -550,7 +551,6 @@ export function createApi({
         computerId: computer,
         label,
         profile,
-        screen,
       });
       if ('error' in opened) return computerFailure(c, opened);
       handle = opened;
@@ -573,7 +573,6 @@ export function createApi({
           sync: opened.sync,
           idlePauseSeconds: IDLE_PAUSE_MS / 1000,
           ...(opened.userHadControl ? { userHadControl: true } : {}),
-          ...(opened.screenUnchanged ? { screenUnchanged: true } : {}),
         },
         201,
       );
@@ -629,7 +628,22 @@ export function createApi({
     if ('error' in caller) return keyFailure(c, caller);
     return c.json({ session: c.req.param('id'), state: await computerSessionState(db, caller, c.req.param('id')) });
   });
-  // Ends the session, pausing its fork, which keeps its tabs and files for the next open with its computer ID.
+  // Deletes a computer of a member of the key's organization, with what was on it. Refused with busy while another
+  // session holds control or the member has taken it over; the key's own session on it just ends.
+  app.delete('/computers/:id', async c => {
+    const id = c.req.param('id');
+    const caller = await computerCallerForComputer(db, keyOf(c), id);
+    if ('error' in caller) return keyFailure(c, caller);
+    try {
+      const deleted = await deleteComputer(db, running, caller, id);
+      return 'error' in deleted ? computerFailure(c, deleted) : c.json(deleted);
+    } catch (error) {
+      logError('api computer delete', error);
+      const refused = accountRefusal(error);
+      return refused ? computerFailure(c, refused) : computerUnavailable(c);
+    }
+  });
+  // Ends the session, pausing its computer, which keeps its tabs and files for the next open with its computer ID.
   app.delete('/computers/sessions/:id', async c => {
     const caller = await computerCallerForSession(db, keyOf(c), c.req.param('id'));
     if ('error' in caller) return keyFailure(c, caller);
@@ -650,7 +664,7 @@ export function createApi({
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
     return c.json(await setTimeZone(db, c.get('principal').id, parsed.data.timeZone));
   });
-  // Main computer (validation prototype).
+  // The member's computers, their limit, and what a new one would replace.
   app.get('/computer', async c => c.json(await computerView(db, running, await memberOf(c))));
   // The browsers syncing to this organization, for the Browser sync page. Removing one stops it syncing here and deletes
   // the capture if it sent it; it keeps syncing to the person's other organizations. Neither path takes a sync token or
@@ -668,7 +682,7 @@ export function createApi({
       ? c.json({ disconnected: true })
       : c.json({ error: 'not_found' }, 404);
   });
-  // Delete everything: synced browser data first, then the computer and its sign-ins.
+  // Delete everything: synced browser data first, then the computers and their sign-ins.
   app.delete('/computer', async c => {
     const member = await memberOf(c);
     // Every browser is removed from this organization, and sync turns off here. Agents stay connected.
@@ -677,50 +691,55 @@ export function createApi({
     // Before the provider, so a provider failure cannot skip it. Agents stay connected.
     await resetSetup(db, member);
     await deleteToolCalls(db, member);
-    await deleteMainComputer(db, running, member);
+    await deleteAllComputers(db, running, member);
     return c.json({ deleted: true });
   });
-  // Reset: only the computer, so it is rebuilt from the current template; synced data and setup stay.
-  app.post('/computer/reset', async c =>
-    (await deleteMainComputer(db, running, await memberOf(c)))
-      ? c.json({ reset: true })
-      : c.json({ error: 'not_found' }, 404),
+  // New computer: one with no agent attached, made from the template with the latest capture applied, left paused. At
+  // the cap, `replace` names the computer the page confirmed replacing (computerView, replaces).
+  app.post('/computer/computers', async c => {
+    const parsed = z
+      .object({ replace: z.string().regex(COMPUTER_ID_PATTERN).optional() })
+      .strict()
+      .safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+    try {
+      const made = await createPausedComputer(db, running, await memberOf(c), parsed.data);
+      return 'error' in made ? computerFailure(c, made) : c.json(made, 201);
+    } catch (error) {
+      if (error instanceof HTTPException) throw error;
+      logError('api new computer', error);
+      const refused = accountRefusal(error);
+      return refused ? computerFailure(c, refused) : computerUnavailable(c);
+    }
+  });
+  // Deletes all of the member's computers, keeping synced data and setup.
+  app.delete('/computer/computers', async c =>
+    c.json({ deleted: await deleteAllComputers(db, running, await memberOf(c)) }),
   );
-  // The main computer's size. Choosing another resets the computer onto it; synced data and setup stay.
+  // Deletes one of the member's computers, unless another session holds control or it is taken over (busy).
+  app.delete('/computer/computers/:id', async c => {
+    const deleted = await deleteComputer(db, running, await memberOf(c), c.req.param('id'));
+    return 'error' in deleted ? computerFailure(c, deleted) : c.json(deleted);
+  });
+  // The size of the member's new computers. Changing it resets nothing.
   app.put('/computer/size', async c => {
     const parsed = z
       .object({ size: z.enum(COMPUTER_SIZE_NAMES) })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
-    const reset = await setComputerSize(db, running, await memberOf(c), parsed.data.size);
-    return c.json({ size: parsed.data.size, reset });
+    await setComputerSize(db, await memberOf(c), parsed.data.size);
+    return c.json({ size: parsed.data.size });
   });
-  // The screen size of the member's computers, switched without a reset (setComputerScreen says when).
+  // The screen size of the member's new computers. Changing it resets nothing.
   app.put('/computer/screen', async c => {
     const parsed = z
       .object({ screen: z.enum(SCREEN_NAMES) })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
-    const result = await setComputerScreen(db, running, await memberOf(c), parsed.data.screen);
-    return c.json({ screen: parsed.data.screen, result });
-  });
-  // Pinned computers: pin one of the member's forks under a name, or rename one already pinned; unpin keeps the name.
-  // Past the deployment's cap (hooks.ts, Limits.pinnedForks), pinned_fork_limit with the cap.
-  app.put('/computer/forks/:id/pin', async c => {
-    const parsed = z
-      .object({ label: z.string().trim().min(1).max(100) })
-      .strict()
-      .safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
-    const pinned = await pinFork(db, limits, await memberOf(c), c.req.param('id'), parsed.data.label);
-    if ('error' in pinned) return c.json(pinned, pinned.error === 'not_found' ? 404 : 409);
-    return c.json(pinned);
-  });
-  app.delete('/computer/forks/:id/pin', async c => {
-    const unpinned = await unpinFork(db, await memberOf(c), c.req.param('id'));
-    return 'error' in unpinned ? c.json(unpinned, 404) : c.json(unpinned);
+    await setComputerScreen(db, await memberOf(c), parsed.data.screen);
+    return c.json({ screen: parsed.data.screen });
   });
   // Live view. The page's heartbeat: each lease it holds goes to its kind's handler
   // (heartbeat.ts), which answers with the lease's status.
@@ -731,8 +750,8 @@ export function createApi({
   });
   // Take control for this page load (lease), or move the user's takeover to it; hand back ends it. Both
   // answer with the lease's live view status, which shows whether it holds the takeover. `computer` names one of the
-  // member's forks; without it, the main computer.
-  const computer = z.string().regex(COMPUTER_ID_PATTERN).optional();
+  // member's computers.
+  const computer = z.string().regex(COMPUTER_ID_PATTERN);
   const leaseBody = z.object({ lease: z.uuid(), computer }).strict();
   app.post('/computer/takeover', async c => {
     const parsed = leaseBody.safeParse(await c.req.json().catch(() => null));
@@ -753,7 +772,7 @@ export function createApi({
     const { lease, computer: computerId } = parsed.data;
     const ticket = signLiveViewTicket(
       (await auth.$context).secret,
-      { userId, sessionId, lease, ...(computerId && { computerId }) },
+      { userId, sessionId, lease, computerId },
       Date.now(),
       use,
     );

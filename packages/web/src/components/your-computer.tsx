@@ -21,21 +21,23 @@ import { AppPage } from './app-shell.tsx';
 import { LiveViewPanel } from './live-view.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-// The Computer page: status and usage, live view in place, size, screen size, and reset.
+// The Computer page: status and usage, the member's computers with live view in place, what new ones are made at, and
+// deleting them all.
 export function YourComputer() {
   const { data: view, isError } = useQuery(computerQuery);
   return (
     <AppPage
       wide
-      title="Your computer"
-      description="A Linux desktop with a browser, signed in from yours. It sleeps when idle and wakes when it's opened."
+      title="Your computers"
+      description="Linux desktops with a browser, signed in from yours. Each sleeps when idle and wakes when it's opened."
     >
       {view ? (
         <>
           <ComputerStats view={view} />
           <LiveViewPanel
-            forks={view.forks}
-            metered={!!view.usage}
+            computers={view.computers}
+            limit={view.limit}
+            replaces={view.replaces}
             exhausted={
               view.usage?.hardStop && view.usage.usedShare >= 1
                 ? {
@@ -46,10 +48,12 @@ export function YourComputer() {
           />
           <ComputerSizeCard view={view} />
           <ScreenSizeCard view={view} />
-          {view.computer && <ResetComputer pinned={view.forks.some(fork => fork.pinned)} />}
+          {view.computers.length > 0 && <DeleteAllComputers count={view.computers.length} />}
         </>
       ) : (
-        <p className="text-foreground">{isError ? 'Your computer could not load. Reload to try again.' : 'Loading…'}</p>
+        <p className="text-foreground">
+          {isError ? 'Your computers could not load. Reload to try again.' : 'Loading…'}
+        </p>
       )}
     </AppPage>
   );
@@ -87,12 +91,12 @@ function ComputerStats({ view }: { view: ComputerView }) {
       : []),
     used
       ? { label: 'Last used by', value: used.name, note: when(used.at) }
-      : { label: 'Last used by', value: 'No agent yet', note: 'Ask a connected agent to open it.' },
+      : { label: 'Last used by', value: 'No agent yet', note: 'Ask a connected agent to open a computer.' },
     synced
       ? {
           label: 'Synced sign-ins',
           value: when(synced.copiedAt),
-          note: synced.applied ? 'On your computer' : 'Applied the next time it opens',
+          note: 'Applied each time a computer opens',
         }
       : { label: 'Synced sign-ins', value: 'None yet', note: 'Set up browser sync to add them.' },
   ];
@@ -120,20 +124,14 @@ function ComputerStats({ view }: { view: ComputerView }) {
   );
 }
 
-// Chooses the main computer's size. A computer keeps its size, so changing it resets an existing computer onto the new
-// one, after a confirmation; with no computer yet it only sets the size the first one is created at.
+// Chooses the size new computers start at; existing ones keep theirs.
 function ComputerSizeCard({ view }: { view: ComputerView }) {
   const queryClient = useQueryClient();
-  const [pending, setPending] = useState<ComputerSize | null>(null);
   const change = useMutation({
     mutationFn: (size: ComputerSize) => api('/computer/size', 'PUT', { size }),
-    onSuccess: () => {
-      setPending(null);
-      return queryClient.invalidateQueries({ queryKey: computerQuery.queryKey });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
   });
-  const current = view.computer?.size ?? view.size;
-  const shown = pending ?? current;
+  const shown = change.isPending ? change.variables : view.size;
   return (
     <Card id="size" className="scroll-mt-6">
       <CardHeader>
@@ -141,7 +139,7 @@ function ComputerSizeCard({ view }: { view: ComputerView }) {
           <h2>Computer size</h2>
         </CardTitle>
         <CardDescription>
-          More CPUs and memory for heavy sites and many tabs.
+          More CPUs and memory for heavy sites and many tabs. Applies to new computers.
           {view.usage &&
             ' A larger computer uses your credit faster, at its cost: twice the CPUs and memory, twice the rate.'}
         </CardDescription>
@@ -154,12 +152,7 @@ function ComputerSizeCard({ view }: { view: ComputerView }) {
           value={[shown]}
           disabled={change.isPending}
           onValueChange={([next]) => {
-            if (!next || next === shown) return;
-            change.reset();
-            const size = next as ComputerSize;
-            if (size === current) setPending(null);
-            else if (view.computer) setPending(size);
-            else change.mutate(size);
+            if (next && next !== shown) change.mutate(next as ComputerSize);
           }}
         >
           {COMPUTER_SIZE_NAMES.map(size => (
@@ -169,23 +162,6 @@ function ComputerSizeCard({ view }: { view: ComputerView }) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {pending && (
-          <div className="grid gap-3 rounded-lg bg-muted p-4">
-            <p className="text-sm">
-              Changing to {pending} resets your computer onto the new size. Its files and every sign-in made on it are
-              deleted, and an agent using it now stops. Your synced sites come back the next time an agent opens it.
-              {view.forks.some(fork => fork.pinned) && ' Your pinned computers are deleted too.'}
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="destructive" disabled={change.isPending} onClick={() => change.mutate(pending)}>
-                {change.isPending ? 'Changing…' : `Change to ${pending}`}
-              </Button>
-              <Button variant="secondary" disabled={change.isPending} onClick={() => setPending(null)}>
-                Keep {current}
-              </Button>
-            </div>
-          </div>
-        )}
         {change.isError && (
           <Alert variant="destructive">
             <AlertDescription>{change.error.message}</AlertDescription>
@@ -203,17 +179,14 @@ const screenNames: Record<ScreenSize, string> = {
 };
 const pixels = (screen: ScreenSize) => `${SCREENS[screen].width} × ${SCREENS[screen].height}`;
 
-// Chooses the screen size of the member's computers. Unlike the size, it changes without a reset: the computer switches
-// now if it runs, or when it next wakes. A computer from before screen sizes keeps 1280 × 800 until reset.
+// Chooses the screen size new computers start at; existing ones keep theirs.
 function ScreenSizeCard({ view }: { view: ComputerView }) {
   const queryClient = useQueryClient();
   const change = useMutation({
-    mutationFn: (screen: ScreenSize) =>
-      api<{ screen: ScreenSize; result: 'switched' | 'saved' | 'fixed' }>('/computer/screen', 'PUT', { screen }),
+    mutationFn: (screen: ScreenSize) => api('/computer/screen', 'PUT', { screen }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: computerQuery.queryKey }),
   });
   const shown = change.isPending ? change.variables : view.screen;
-  const fixed = view.computer?.screenFixed || change.data?.result === 'fixed';
   return (
     <Card id="screen" className="scroll-mt-6">
       <CardHeader>
@@ -221,8 +194,8 @@ function ScreenSizeCard({ view }: { view: ComputerView }) {
           <h2>Screen size</h2>
         </CardTitle>
         <CardDescription>
-          The screen of your computer and of each new computer an agent gets. A bigger screen shows more of a page, and
-          each screenshot costs an agent more tokens. Agents can still switch their own.
+          The screen of each new computer. A bigger screen shows more of a page, and each screenshot costs an agent more
+          tokens.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -243,17 +216,6 @@ function ScreenSizeCard({ view }: { view: ComputerView }) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {fixed ? (
-          <p className="text-sm text-muted-foreground">
-            Your computer is from before screen sizes, so it and the computers agents get from it stay 1280 × 800. Reset
-            it to use this size.
-          </p>
-        ) : (
-          change.data?.result === 'saved' &&
-          view.computer && (
-            <p className="text-sm text-muted-foreground">Your computer switches the next time it wakes.</p>
-          )
-        )}
         {change.isError && (
           <Alert variant="destructive">
             <AlertDescription>{change.error.message}</AlertDescription>
@@ -264,42 +226,39 @@ function ScreenSizeCard({ view }: { view: ComputerView }) {
   );
 }
 
-// Rebuilds the computer from the current image; synced data and setup stay.
-// pinned: the member has pinned computers, which a reset deletes with the rest.
-function ResetComputer({ pinned }: { pinned: boolean }) {
+// Deletes every computer the member has; synced data and setup stay.
+function DeleteAllComputers({ count }: { count: number }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
-  const reset = useMutation({
-    mutationFn: () => api('/computer/reset', 'POST'),
+  const remove = useMutation({
+    mutationFn: () => api('/computer/computers', 'DELETE'),
     onSuccess: () => {
       setConfirm(false);
       return queryClient.invalidateQueries({ queryKey: computerQuery.queryKey });
     },
   });
   return (
-    <Card id="reset" className="scroll-mt-6">
+    <Card id="delete-computers" className="scroll-mt-6">
       <CardHeader>
         <CardTitle>
-          <h2>Reset computer</h2>
+          <h2>Delete all computers</h2>
         </CardTitle>
-        <CardDescription>
-          Start over on the latest version of the computer, keeping your synced browser data.
-        </CardDescription>
+        <CardDescription>Delete every computer you have, keeping your synced browser data.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {confirm ? (
           <div className="grid gap-3 rounded-lg bg-muted p-4">
             <p className="text-sm">
-              This replaces your computer with a fresh one. Its files and every sign-in made on it are deleted, and an
-              agent using it now stops. Your synced sites come back the next time an agent opens it.
-              {pinned && ' Your pinned computers are deleted too.'}
+              This deletes {count === 1 ? 'your computer' : `all ${count} of your computers`}, with their files and
+              every sign-in made on them, and stops any agent using one. Your synced sites come back on the next
+              computer.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="destructive" disabled={reset.isPending} onClick={() => reset.mutate()}>
-                {reset.isPending ? 'Resetting…' : 'Reset computer'}
+              <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
+                {remove.isPending ? 'Deleting…' : 'Delete all computers'}
               </Button>
-              <Button variant="secondary" disabled={reset.isPending} onClick={() => setConfirm(false)}>
-                Keep it
+              <Button variant="secondary" disabled={remove.isPending} onClick={() => setConfirm(false)}>
+                Keep them
               </Button>
             </div>
           </div>
@@ -308,17 +267,17 @@ function ResetComputer({ pinned }: { pinned: boolean }) {
             <Button
               variant="outline"
               onClick={() => {
-                reset.reset();
+                remove.reset();
                 setConfirm(true);
               }}
             >
-              Reset computer…
+              Delete all computers…
             </Button>
           </div>
         )}
-        {reset.isError && (
+        {remove.isError && (
           <Alert variant="destructive">
-            <AlertDescription>{reset.error.message}</AlertDescription>
+            <AlertDescription>{remove.error.message}</AlertDescription>
           </Alert>
         )}
       </CardContent>

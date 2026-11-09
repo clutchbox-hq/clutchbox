@@ -51,8 +51,8 @@ export function liveViewHandler({
   return async (request: Request): Promise<Response> => {
     // The platform cuts the connection LIVE_VIEW_MAX_DURATION_MS after the function starts.
     const deadlineMs = Date.now() + LIVE_VIEW_MAX_DURATION_MS;
-    // The page's ticket (live-view-ticket.ts), for its session, its lease, and one of the member's forks or, without
-    // one, the main computer; its session must still hold. Only the web app's pages open the socket.
+    // The page's ticket (live-view-ticket.ts), for its session, its lease, and one of the member's computers; its
+    // session must still hold. Only the web app's pages open the socket.
     const ticket = readLiveViewTicket((await auth.$context).secret, new URL(request.url).searchParams.get('ticket'));
     if (!ticket || !(await sessionHolds(db, ticket.sessionId, ticket.userId))) return refuse('unauthenticated', 401);
     if (request.headers.get('origin') !== origin) return refuse('forbidden_origin', 403);
@@ -79,7 +79,7 @@ export function liveViewHandler({
         lease,
         target,
       );
-      // No computer yet, or this page load holds no live watch or takeover on it (its heartbeat comes first).
+      // No such computer, or this page load holds no live watch or takeover on it (its heartbeat comes first).
       if (session === 'not_found') return refuse('not_found', 404);
       if (session === 'not_watching') return refuse('not_watching', 409);
       if (session === 'needs_reset')

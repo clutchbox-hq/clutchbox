@@ -148,7 +148,7 @@ function Checklist({ setup, first, mcpUrl }: { setup: SetupView; first: string |
         </Step>
         <Step
           number={3}
-          title={hasRecipes ? 'Run your first recipe' : 'Let an agent open your computer'}
+          title={hasRecipes ? 'Run your first recipe' : 'Let an agent open a computer'}
           done={items.computer}
           current={current === 2}
           summary={used ? `Opened by ${used.name}, ${when(used.at)}` : 'Opened'}
@@ -157,7 +157,7 @@ function Checklist({ setup, first, mcpUrl }: { setup: SetupView; first: string |
           {hasRecipes ? (
             <>
               <p className="text-foreground">
-                Copy a recipe’s prompt into a connected agent. It opens your computer, already signed in.
+                Copy a recipe’s prompt into a connected agent. It opens a computer, already signed in.
               </p>
               <RecipeGallery sync={sync} mcpUrl={mcpUrl} />
             </>
@@ -253,7 +253,7 @@ function Status({ setup, first, mcpUrl }: { setup: SetupView | undefined; first:
         <Alert>
           <AlertTitle>Browser sync is {stopped}</AlertTitle>
           <AlertDescription>
-            Your computer keeps the last copy of your sign-ins.{' '}
+            New computers get the last copy of your sign-ins.{' '}
             {stopped === 'paused' ? 'Resume from the extension in your browser.' : 'Connect again from the extension.'}
           </AlertDescription>
           <AlertAction>
@@ -377,11 +377,7 @@ function SyncTitle({ view, stopped }: { view: ComputerView | undefined; stopped:
       <CardTitle>
         <h2>{stopped === 'off' ? 'Off' : stopped === 'paused' ? 'Paused' : synced ? 'On' : 'Not synced yet'}</h2>
       </CardTitle>
-      {synced && (
-        <CardDescription>
-          Copied {when(synced.copiedAt)} · {synced.applied ? 'on your computer' : 'applied when it next opens'}
-        </CardDescription>
-      )}
+      {synced && <CardDescription>Copied {when(synced.copiedAt)} · applied each time a computer opens</CardDescription>}
     </>
   );
 }
@@ -394,7 +390,7 @@ function ComputerSummary({ view }: { view: ComputerView }) {
       <CardHeader>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <span aria-hidden className={`size-2 rounded-full ${status.dot}`} />
-          Your computer · {status.short}
+          Your computers · {status.short}
         </p>
         <CardTitle>
           <h2>{status.note}</h2>

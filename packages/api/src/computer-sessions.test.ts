@@ -7,19 +7,20 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from '../../server/src/browser-fixtures.ts';
 import { bundle, cookie } from '../../server/src/capture-fixtures.ts';
 import { CDP_CLOSE } from '../../server/src/cdp-relay.ts';
-import { handBackComputer, listForks, SESSION_ID_PATTERN, takeOverComputer } from '../../server/src/computers.ts';
+import { handBackComputer, listComputers, SESSION_ID_PATTERN, takeOverComputer } from '../../server/src/computers.ts';
+import { newPublicId } from '../../server/src/ids.ts';
 import type { Member } from '../../server/src/organizations.ts';
 import * as schema from '../../server/src/schema.ts';
 import { useDeveloperApi } from './developer-api-fixtures.ts';
 
 // Computer sessions over the developer REST API and the CDP proxy, called the way developers call them: through the
-// SDK, over real HTTP and WebSockets (developer-api-fixtures.ts). Where a test needs to see what reaches the fork's
+// SDK, over real HTTP and WebSockets (developer-api-fixtures.ts). Where a test needs to see what reaches the computer's
 // Chrome, a WebSocket server stands in for it; cdp-chromium.test.ts drives a real one.
 const developer = useDeveloperApi();
-const { person, newKey, opened, refusal, rawRequest, forkRow, computers } = developer;
+const { person, newKey, opened, refusal, rawRequest, computerRow, computers } = developer;
 
 describe('computer sessions over REST', () => {
-  it('open a session for a member on a fork of their computer, with its CDP URL and live-view link, then exec and close it', async () => {
+  it('open a session for a member on a new computer, with its CDP URL and live-view link, then exec and close it', async () => {
     const admin = await person('admin', 'admin');
     const worker = await person('worker', 'member');
     const { id: keyId, client } = await newKey(admin.cookie);
@@ -29,12 +30,12 @@ describe('computer sessions over REST', () => {
     expect(session.cdpUrl).toMatch(/^ws:\/\/localhost:\d+\/api\/v1\/cdp\?token=[A-Za-z0-9_-]{43}$/);
     expect(session.liveViewUrl).toBe(`${developer.origin}/app/computer?computer=${session.computer.id}`);
     expect(session.sync).toEqual({ status: 'none' });
-    // The key's session, on the member's fork; only the secret's hash is kept.
+    // The key's session, on the member's computer; only the secret's hash is kept.
     const [row] = await developer.db.select().from(schema.computerSessions);
     expect(row).toMatchObject({ apiKeyId: keyId, clientId: null, membershipId: worker.member.membershipId });
     expect(row!.cdpTokenHash).not.toContain(new URL(session.cdpUrl).searchParams.get('token'));
     // The member sees whose it is on the Computer page.
-    expect(await listForks(developer.db, worker.member)).toMatchObject([
+    expect(await listComputers(developer.db, computers(), worker.member)).toMatchObject([
       { computerId: session.computer.id, agent: { agent: null, host: 'Ingest API key' } },
     ]);
     expect(await session.exec('echo hi', { cwd: '/home/user' })).toEqual({
@@ -63,8 +64,8 @@ describe('computer sessions over REST', () => {
     expect(await reopened.state()).toBe('ended');
     expect(await refusal(reopened.exec('true'))).toEqual([409, 'session_ended']);
     expect(await refusal(reopened.close())).toEqual([409, 'session_ended']);
-    // The fork is paused, with what was on it, for the next open.
-    expect(developer.fake.sandboxes.get((await forkRow(session.computer.id)).sandboxId!)!.paused).toBe(true);
+    // The computer is paused, with what was on it, for the next open.
+    expect(developer.fake.sandboxes.get((await computerRow(session.computer.id)).sandboxId!)!.paused).toBe(true);
   });
 
   it("need the computers scope, act only for the key's organization, and only on the key's own sessions", async () => {
@@ -78,7 +79,7 @@ describe('computer sessions over REST', () => {
       'insufficient_scope',
     ]);
     expect(await refusal(client.computers.open({ member: outsider.publicId }))).toEqual([404, 'not_found']);
-    expect(developer.fake.calls.fork).toBe(0);
+    expect(developer.fake.calls.create).toBe(0);
     const session = await client.computers.open({ member: worker.publicId });
     // Another key of the same organization can't see or use it.
     const second = await newKey(admin.cookie);
@@ -178,24 +179,36 @@ describe('computer sessions over REST', () => {
     expect((await rawRequest(secret, 'GET', `/members/${worker.publicId}/capture?profile=cmp_x`)).status).toBe(400);
   });
 
-  it("switch the computer's screen when asked, and say when it can't", async () => {
+  it('delete a computer with a key, refusing while another session holds it, and never another organization', async () => {
     const admin = await person('admin', 'admin');
     const worker = await person('worker', 'member');
-    const { client } = await newKey(admin.cookie);
-    const session = await client.computers.open({ member: worker.publicId, screen: '1920x1200' });
-    expect(session.screenUnchanged).toBe(false);
-    const sandbox = developer.fake.sandboxes.get((await forkRow(session.computer.id)).sandboxId!)!;
-    expect(sandbox.screen).toEqual({ width: 1920, height: 1200 });
-    // A computer from before screen sizes keeps its own.
-    Object.assign(sandbox, { screen: { width: 1280, height: 800 }, desktop: { width: 1280, height: 800 } });
-    const legacy = await client.computers.open({
-      member: worker.publicId,
-      computer: session.computer.id,
-      session: session.id,
-      screen: '1440x900',
-    });
-    expect(legacy.screenUnchanged).toBe(true);
-    expect(sandbox.screen).toEqual({ width: 1280, height: 800 });
+    const { secret, client } = await newKey(admin.cookie);
+    const second = await newKey(admin.cookie);
+    const capturesOnly = await newKey(admin.cookie, { capturesOnly: true });
+    const session = await client.computers.open({ member: worker.publicId });
+    expect(await refusal(capturesOnly.client.computers.delete(session.computer.id))).toEqual([
+      403,
+      'insufficient_scope',
+    ]);
+    // Another key's session holds it; a malformed ID, or one with no computer, is refused.
+    expect(await refusal(second.client.computers.delete(session.computer.id))).toEqual([409, 'busy']);
+    expect((await rawRequest(secret, 'DELETE', '/computers/nope')).status).toBe(404);
+    expect((await rawRequest(secret, 'DELETE', `/computers/${newPublicId('computer')}`)).status).toBe(404);
+    const sandboxId = (await computerRow(session.computer.id)).sandboxId!;
+    // Its own key's session just ends with it.
+    await client.computers.delete(session.computer.id);
+    expect(developer.fake.sandboxes.has(sandboxId)).toBe(false);
+    expect(await refusal(client.computers.delete(session.computer.id))).toEqual([404, 'computer_not_found']);
+    expect(await refusal(client.computers.open({ member: worker.publicId, computer: session.computer.id }))).toEqual([
+      404,
+      'computer_not_found',
+    ]);
+    // A computer in another organization is not found.
+    const elsewhere = await person('outsider', 'owner', developer.other);
+    const other = await newKey(elsewhere.cookie, { organizationId: developer.other });
+    const theirs = await other.client.computers.open({ member: elsewhere.publicId });
+    expect(await refusal(client.computers.delete(theirs.computer.id))).toEqual([404, 'computer_not_found']);
+    expect(developer.fake.sandboxes.has((await computerRow(theirs.computer.id)).sandboxId!)).toBe(true);
   });
 
   it('refuse malformed requests', async () => {
@@ -207,7 +220,7 @@ describe('computer sessions over REST', () => {
       { member: 'mem_x' },
       { member: worker.publicId, computer: 'nope' },
       { member: worker.publicId, label: '' },
-      { member: worker.publicId, screen: '1024x768' },
+      { member: worker.publicId, screen: '1440x900' },
       { member: worker.publicId, extra: true },
       'not json',
     ])
@@ -241,11 +254,11 @@ describe('the CDP proxy', () => {
     expect(await handshake(`${proxy}?token=${'a'.repeat(43)}`)).toEqual({ status: 409, error: 'session_ended' });
     const plain = await fetch(session.cdpUrl.replace(/^ws/, 'http'));
     expect(plain.status).toBe(426);
-    // Nothing listens where the fork's Chrome should be.
+    // Nothing listens where the computer's Chrome should be.
     developer.fake.setCdpUrl('ws://127.0.0.1:9/');
     expect(await handshake(session.cdpUrl)).toEqual({ status: 503, error: 'computer_unavailable' });
     // The attempt's call ended with it.
-    expect((await forkRow(session.computer.id)).callsInFlight).toEqual({});
+    expect((await computerRow(session.computer.id)).callsInFlight).toEqual({});
     await developer.db
       .update(schema.apikey)
       .set({ permissions: JSON.stringify({ captures: ['read'] }) })
@@ -262,7 +275,7 @@ describe('the CDP proxy', () => {
 
   it("closes for the member's takeover, and the SDK reconnects after the hand-back and after a drop", async () => {
     const { session, worker } = await opened();
-    // The fork's Chrome, as reached through its bridge.
+    // The computer's Chrome, as reached through its bridge.
     const chrome = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise(resolve => chrome.once('listening', resolve));
     const upstream: IncomingMessage[] = [];
@@ -299,9 +312,9 @@ describe('the CDP proxy', () => {
         },
       });
       expect(connects).toBe(1);
-      // The fork's Chrome got the provider's traffic token, and the Origin its bridge accepts.
+      // The computer's Chrome got the provider's traffic token, and the Origin its bridge accepts.
       expect(upstream[0]!.headers).toMatchObject({
-        'e2b-traffic-access-token': `token-${(await forkRow(session.computer.id)).sandboxId}`,
+        'e2b-traffic-access-token': `token-${(await computerRow(session.computer.id)).sandboxId}`,
         origin: 'agent-computers-relay',
       });
       const lease = randomUUID();

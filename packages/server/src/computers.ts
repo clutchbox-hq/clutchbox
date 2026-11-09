@@ -16,7 +16,7 @@ import {
   pngSize,
   type ScreenSize,
 } from '@clutchbox/computer';
-import { and, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, min, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, min, sql } from 'drizzle-orm';
 import { type AgentKind, agentOf, clientHost } from './agents.ts';
 import {
   captureView,
@@ -34,7 +34,6 @@ import {
   CLIPBOARD_IMAGE_SET_MS,
   CLIPBOARD_SET_MS,
   CREATE_STALE_MS,
-  FORK_UNUSED_MS,
   HOLD_EXTEND_STEP_MS,
   HOLD_LAPSE_MS,
   IDLE_PAUSE_MS,
@@ -46,7 +45,6 @@ import {
   REFRESH_BUDGET_MS,
   RELEASED_LEASE_MS,
   SESSION_IDLE_END_MS,
-  SNAPSHOT_HOLD_MS,
   SYNC_BUDGET_MS,
   SYNC_DEADLINE_MS,
   SYNC_MIN_MS,
@@ -62,12 +60,11 @@ import * as schema from './schema.ts';
 import type { Owner } from './sealing.ts';
 import { markToolStep } from './tool-calls.ts';
 
-// Each member (a person in one organization) has one main computer, which only the member changes, by taking it over in
-// live view, and agents work in forks of it (Forks, below), each controlled by one computer session at a time. Timings
-// are in computer-timing.ts.
+// Each member (a person in one organization) has up to their cap of computers (Computers, below), each made from the
+// template for one task and controlled by one computer session at a time. Timings are in computer-timing.ts.
 // Server-issued computer session IDs; access is checked against the caller, never the ID alone.
 export const SESSION_ID_PATTERN = publicIdPattern('computerSession');
-// A fork's ID, which agents reopen it by; like a session's, it works only for the member whose fork it is.
+// A computer's ID, which agents reopen it by; like a session's, it works only for the member whose computer it is.
 export const COMPUTER_ID_PATTERN = publicIdPattern('computer');
 // The provider interfaces live in @clutchbox/computer; re-exported for this service's callers.
 export {
@@ -98,6 +95,8 @@ export type ComputerFailure = {
     | 'needs_reset'
     | 'computer_not_found'
     | 'profile_not_found'
+    // The page's New computer: at the cap, the computer it would replace was not the one the member confirmed.
+    | 'confirm_replace'
     | 'provider_account_refused';
   message: string;
   busyUntil?: Date | undefined;
@@ -241,70 +240,6 @@ const running = (computer: Pick<ComputerRow, 'runsUntil'>, now: Date) =>
 const meterRun = (db: Database, account: ComputerAccount, computerId: number, member: Member, timeoutMs: number) =>
   db.transaction(tx => meter(tx, account, computerId, member, new Date(Date.now() + timeoutMs)));
 
-// The member's main computer row.
-const mainOf = (member: Pick<Member, 'membershipId'>) =>
-  and(eq(schema.computers.membershipId, member.membershipId), isNull(schema.computers.forkOf));
-const resetting: ComputerFailure = {
-  error: 'starting',
-  message: 'The computer is being reset. Try again in a few seconds.',
-};
-// Exactly one caller creates the member's main provider computer, at the size the member chose; others see `starting`.
-async function ensureComputer(
-  db: Database,
-  { provider, account }: InOrganization,
-  member: Member,
-): Promise<ComputerRow | ComputerFailure> {
-  const [inserted] = await db
-    .insert(schema.computers)
-    .values({
-      membershipId: member.membershipId,
-      publicId: newPublicId('computer'),
-      size: sql`(select ${schema.memberships.computerSize} from ${schema.memberships} where ${schema.memberships.id} = ${member.membershipId})`,
-    })
-    .onConflictDoNothing()
-    .returning(computerColumns);
-  let row = inserted;
-  if (!row) {
-    [row] = await db.select(computerColumns).from(schema.computers).where(mainOf(member));
-    if (!row) return resetting;
-    if (row.status === 'ready') return row;
-    const [claimed] = await db
-      .update(schema.computers)
-      .set({ updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.computers.id, row.id),
-          eq(schema.computers.status, 'creating'),
-          lt(schema.computers.updatedAt, new Date(Date.now() - CREATE_STALE_MS)),
-        ),
-      )
-      .returning(computerColumns);
-    if (!claimed) return { error: 'starting', message: 'The computer is starting. Try again in about 30 seconds.' };
-    row = claimed;
-  }
-  let sandboxId = await provider.find(row.publicId);
-  if (!sandboxId) {
-    await meterRun(db, account, row.id, member, IDLE_PAUSE_MS);
-    markToolStep('create');
-    sandboxId = await provider.create(row.publicId, IDLE_PAUSE_MS, row.size);
-  }
-  // Conditional: a delete (or a stale-create takeover that finished first) may have run meanwhile.
-  const [ready] = await db
-    .update(schema.computers)
-    .set({ status: 'ready', sandboxId })
-    .where(and(eq(schema.computers.id, row.id), eq(schema.computers.status, 'creating')))
-    .returning(computerColumns);
-  if (ready) return ready;
-  const [current] = await db.select(computerColumns).from(schema.computers).where(eq(schema.computers.id, row.id));
-  if (current?.status === 'ready' && current.sandboxId === sandboxId) return current;
-  // Paused computers never expire: kill the one no row records, or it is orphaned.
-  await provider.kill(sandboxId).catch(() => {
-    console.error('Could not kill a provider computer that no row records; it may be orphaned.');
-  });
-  if (current?.status === 'ready') return current;
-  return resetting;
-}
-
 // Computer sessions. Live: not ended and not idle for SESSION_IDLE_END_MS (an idle-expired one is
 // ended lazily). It holds control while its last call ended less than IDLE_PAUSE_MS ago; a call in flight
 // holds it until its deadline. A suspended session (the user's takeover) neither expires nor holds
@@ -370,8 +305,7 @@ async function lockSession(
     .for('update');
   let [session] = await tx.select().from(schema.computerSessions).where(own).for('update');
   if (!session || computer?.status !== 'ready' || !computer.sandboxId) return notFound;
-  // A session on the main computer is from before forks: agents never control main.
-  if (session.endedAt || computer.forkOf === null) return ended;
+  if (session.endedAt) return ended;
   if (lapsed(computer, now)) {
     computer = await endTakeover(tx, computer, now);
     [session] = await tx.select().from(schema.computerSessions).where(own);
@@ -421,16 +355,14 @@ const lapsed = (computer: Pick<ComputerRow, 'takeoverUntil'>, now: Date) =>
 // as of the hand-back, or of the lapse deadline for a lapsed one. The resume moves its last call ahead by
 // the suspension, so its idle clock skips it; a call that ended during the suspension counts as ending at the resume.
 // Its next call reports that the user had control (handedBackAt). Returns the computer without the takeover.
-// On the main computer, the member may have signed in, so the next fork needs a new snapshot (snapshotDueAt).
-async function endTakeover<
-  C extends Pick<ComputerRow, 'id' | 'forkOf' | 'takeoverUntil' | 'takeoverLease' | 'takenOverAt'>,
->(tx: Transaction, computer: C, now: Date): Promise<C> {
+async function endTakeover<C extends Pick<ComputerRow, 'id' | 'takeoverUntil' | 'takeoverLease' | 'takenOverAt'>>(
+  tx: Transaction,
+  computer: C,
+  now: Date,
+): Promise<C> {
   const resumedAt = computer.takeoverUntil && computer.takeoverUntil < now ? computer.takeoverUntil : now;
   const cleared = { takeoverLease: null, takenOverAt: null, takeoverUntil: null };
-  await tx
-    .update(schema.computers)
-    .set({ ...cleared, ...(computer.forkOf === null ? { snapshotDueAt: now } : {}) })
-    .where(eq(schema.computers.id, computer.id));
+  await tx.update(schema.computers).set(cleared).where(eq(schema.computers.id, computer.id));
   const at = sql`${resumedAt.toISOString()}::timestamptz`;
   const { lastCallAt, suspendedAt } = schema.computerSessions;
   await tx
@@ -602,15 +534,13 @@ async function startCall(
   return { session, done };
 }
 
-// What computer_open hands back: the session, the fork it runs on, the profile it uses (null with none) among the
-// member's profiles, and how that profile's latest capture applied. screenUnchanged: the screen asked for could not be
-// set, as on a computer from before screen sizes.
+// What computer_open hands back: the session, the computer it runs on, the profile it uses (null with none) among the
+// member's profiles, and how that profile's latest capture applied.
 export type OpenedSession = SessionHandle & {
   sync: SyncSummary;
   computer: { id: string; label: string | null; created: boolean; size: ComputerSize; account: ComputerAccount };
   profile: Profile | null;
   profiles: Profile[];
-  screenUnchanged?: true;
 };
 type Started = {
   id: number;
@@ -619,6 +549,8 @@ type Started = {
   computer: Pick<ComputerRow, 'id' | 'publicId' | 'label' | 'revision' | 'size'>;
   sandboxId: string | null;
   created: boolean;
+  // The computers this open's new one replaced, whose provider computers to kill after the commit.
+  replaced: GoneComputer[];
   userHadControl: boolean;
   profile: Profile | null;
 };
@@ -631,14 +563,16 @@ const profileNotFound: ComputerFailure = {
     'No such browser profile for this account: its browser may have signed out of Clutchbox, or been removed from this organization. Omit profile for the default, or pick one from the profiles computer_open returns.',
 };
 
-// Starts a computer session for the caller on a fork, on one of the member's profiles, applying its latest capture
-// first. Without computerId it creates a new fork from the main computer's latest snapshot; with one of the member's
-// forks' IDs it reopens that fork, as it does the fork of the caller's own session when given only that session's ID.
-// `profile` names a profile by its browser's public ID; without it, the fork keeps the profile its last session used
-// (pickProfile). `screen` switches the fork's screen; without it, the fork keeps its own, and a new one starts at the
-// member's choice (memberships.computerScreen). A session holding control of the fork means `busy`, unless it is the caller's own live sessionId,
-// which this replaces. With joinRetries, a new-computer open that repeats one the caller just began is that open's
-// retry (retriedOpen). Callers must already have verified the live MCP grant and pass a guard that re-checks it.
+// Starts a computer session for the caller, on one of the member's profiles, applying its latest capture first. Every
+// open first deletes computers past the member's cap (trimComputers). Without computerId it creates a new computer (a
+// new row from the template, createComputer), which at the cap replaces the least recently used idle one, so it has no
+// baseline and each site applies wholesale; with one of the member's computers' IDs it reopens that one, as it does the
+// computer of the caller's own session when given only that session's ID. `profile` names a profile by its browser's
+// public ID; without it, the computer keeps the profile its last session used (pickProfile). A new computer starts at
+// the member's screen (memberships.computerScreen). A session holding control of the computer means `busy`, unless it is
+// the caller's own live sessionId, which this replaces. With joinRetries, a new-computer open that repeats one the caller
+// just began is that open's retry (retriedOpen). Callers must already have verified the live MCP grant and pass a guard
+// that re-checks it.
 export async function openComputerSession(
   db: Database,
   deployment: Computers,
@@ -648,14 +582,12 @@ export async function openComputerSession(
     computerId,
     label,
     profile,
-    screen,
     joinRetries = false,
   }: {
     sessionId?: string | undefined;
     computerId?: string | undefined;
     label?: string | undefined;
     profile?: string | undefined;
-    screen?: ScreenSize | undefined;
     joinRetries?: boolean;
   } = {},
 ): Promise<OpenedSession | ComputerFailure> {
@@ -663,39 +595,49 @@ export async function openComputerSession(
   const exhausted = await creditFailure(deployment.metering, db, caller);
   if (exhausted) return exhausted;
   const computers = await inOrganization(deployment, db, caller.organizationId);
+  await trimComputers(db, computers, caller);
   const profiles = await listProfiles(db, caller);
   const choice = { named: profiles.find(each => each.id === profile), profiles };
   if (profile !== undefined && !choice.named) return profileNotFound;
-  const fork = computerId ?? (sessionId ? await forkOfSession(db, caller, sessionId) : null);
-  const retried = !fork && joinRetries && label ? await retriedOpen(db, caller, label, deadline) : null;
-  const started = fork
-    ? await reopenFork(db, computers, caller, fork, sessionId, choice)
+  const reopening = computerId ?? (sessionId ? await computerOfSession(db, caller, sessionId) : null);
+  const retried = !reopening && joinRetries && label ? await retriedOpen(db, caller, label, deadline) : null;
+  const started = reopening
+    ? await reopenComputer(db, caller, reopening, sessionId, choice)
     : retried
       ? // The agent never saw the first open's result, so to it this is still a new computer.
-        await reopenFork(db, computers, caller, retried.computerId, retried.sessionId, choice).then(reopened =>
+        await reopenComputer(db, caller, retried.computerId, retried.sessionId, choice).then(reopened =>
           'error' in reopened ? reopened : { ...reopened, created: true },
         )
-      : await createFork(db, computers, caller, label, choice);
+      : await createComputer(db, computers, caller, label, choice);
   if ('error' in started) return started;
   const { computer } = started;
   const call = { id: started.callId, sessionId: started.id, computerId: computer.id, member: caller };
+  // Beside the create, and never failing the open.
+  const replacing = killReplaced(computers.provider, started.replaced);
   let done: (() => Promise<void>) | undefined;
   try {
-    const sandboxId = started.sandboxId ?? (await provisionFork(db, computers.provider, computer));
+    const sandboxId = started.sandboxId ?? (await provisionComputer(db, computers.provider, computer));
+    await replacing;
+    if (started.sandboxId === null) {
+      // Creating a computer takes seconds, in which the access could have been revoked: then it gets nothing, and leaves
+      // nothing behind (its session goes with the row).
+      const denied = await db.transaction(tx => guardFailure(tx, caller));
+      if (denied) {
+        const gone = { id: computer.id, publicId: computer.publicId, sandboxId };
+        await killReplaced(computers.provider, [gone]);
+        await forgetComputers(db, [gone]);
+        return denied;
+      }
+    }
     const handle = await startCall(db, computers, call, sandboxId);
     done = handle.done;
     markToolStep('sync');
     // Before the apply, which needs the browser this may restart.
     await refreshComputer(db, computers.provider, computer, handle.session);
-    const [sync, screenSet] = await Promise.all([
+    const [sync] = await Promise.all([
       applyProfiles(db, caller, computer, handle.session, started.profile, profiles, deadline),
-      screen
-        ? applyScreen(handle.session, screen)
-        : // A new fork starts at the member's choice; the agent asked for no screen, so there is nothing to report.
-          !started.created ||
-          chosenScreen(db, caller)
-            .then(chosen => applyScreen(handle.session, chosen))
-            .then(() => true),
+      // A new computer starts at the member's choice.
+      started.created && chosenScreen(db, caller).then(chosen => applyScreen(handle.session, chosen)),
     ]);
     return {
       sessionId: started.publicId,
@@ -712,9 +654,9 @@ export async function openComputerSession(
       profiles,
       done,
       ...(started.userHadControl ? { userHadControl: true } : {}),
-      ...(screenSet ? {} : { screenUnchanged: true }),
     };
   } catch (error) {
+    await replacing;
     await done?.();
     // The caller never got this session's ID: end it, or it would hold control (busy) for the idle minute.
     await endSession(db, started.id, 'closed').catch(endError => logError('computer open cleanup', endError));
@@ -722,24 +664,24 @@ export async function openComputerSession(
   }
 }
 
-// The fork of the caller's own computer session (live or not), so an agent passing only its session_id gets its fork
-// back; null for a session on the main computer, from before forks.
-async function forkOfSession(db: Database, caller: Caller, sessionId: string) {
+// The computer of the caller's own computer session (live or not), so an agent passing only its session_id gets its
+// computer back.
+async function computerOfSession(db: Database, caller: Caller, sessionId: string) {
   if (!SESSION_ID_PATTERN.test(sessionId)) return null;
   const [row] = await db
     .select({ publicId: schema.computers.publicId })
     .from(schema.computerSessions)
     .innerJoin(schema.computers, eq(schema.computers.id, schema.computerSessions.computerId))
-    .where(and(eq(schema.computerSessions.publicId, sessionId), ownedBy(caller), isNotNull(schema.computers.forkOf)));
+    .where(and(eq(schema.computerSessions.publicId, sessionId), ownedBy(caller)));
   return row?.publicId ?? null;
 }
 
-// The open a new-computer open retries, once that open has ended: the fork the caller's agent made less than
+// The open a new-computer open retries, once that open has ended: the computer the caller's agent made less than
 // OPEN_RETRY_MS ago with the same label, and its first session, still live, so the agent can't have used it yet. An MCP
 // client may re-send a tool call whose connection closed mid-call as a new request, which a stateless endpoint can't
 // tell from a new call, while the first open runs on; joining it replaces the session whose result nobody received,
 // instead of making a second computer. Waits for the first open's call to end, so the two never apply to one computer
-// at once, or until the deadline. Null with no such open, or once the first's failed create deleted its fork.
+// at once, or until the deadline. Null with no such open, or once the first's failed create deleted its computer.
 async function retriedOpen(db: Database, caller: Caller, label: string, deadline: number) {
   const [first] = await db
     .select({
@@ -753,10 +695,9 @@ async function retriedOpen(db: Database, caller: Caller, label: string, deadline
     .where(
       and(
         eq(schema.computers.membershipId, caller.membershipId),
-        isNotNull(schema.computers.forkOf),
         eq(schema.computers.label, label),
         gt(schema.computers.createdAt, new Date(Date.now() - OPEN_RETRY_MS)),
-        // The session createFork started with the fork, at the same instant.
+        // The session createComputer started with the computer, at the same instant.
         eq(schema.computerSessions.createdAt, schema.computers.createdAt),
         isNull(schema.computerSessions.endedAt),
         ownedBy(caller),
@@ -766,14 +707,14 @@ async function retriedOpen(db: Database, caller: Caller, label: string, deadline
     .limit(1);
   if (!first) return null;
   while (Date.now() < deadline) {
-    const [fork] = await db
+    const [computer] = await db
       .select({ status: schema.computers.status, callsInFlight: schema.computers.callsInFlight })
       .from(schema.computers)
       .where(eq(schema.computers.id, first.id));
-    if (!fork) return null;
+    if (!computer) return null;
     const opening =
-      fork.status === 'creating' ||
-      liveCalls(fork.callsInFlight, new Date()).some(([, call]) => call.sessionId === first.session);
+      computer.status === 'creating' ||
+      liveCalls(computer.callsInFlight, new Date()).some(([, call]) => call.sessionId === first.session);
     if (!opening) break;
     await new Promise(resolve => setTimeout(resolve, OPEN_RETRY_POLL_MS));
   }
@@ -790,7 +731,7 @@ async function startSession(
   sessionId: string | undefined,
   now: Date,
   choice: ProfileChoice,
-): Promise<Omit<Started, 'computer' | 'sandboxId' | 'created'> | ComputerFailure> {
+): Promise<Omit<Started, 'computer' | 'sandboxId' | 'created' | 'replaced'> | ComputerFailure> {
   let computer = locked;
   let live = await liveSession(tx, computer.id);
   if (lapsed(computer, now)) {
@@ -830,7 +771,7 @@ async function startSession(
   return { id, publicId, callId, userHadControl: own && !!live?.handedBackAt, profile };
 }
 
-// One call within the caller's live computer session: resumes the fork without applying, and, once after a hand-back,
+// One call within the caller's live computer session: resumes the computer without applying, and, once after a hand-back,
 // says that the user had control. budgetMs: how long the call may hold control, CALL_BUDGET_MS for a tool call's, or
 // as long as the CDP proxy keeps its connection.
 export async function useComputerSession(
@@ -889,9 +830,9 @@ export async function useComputerSession(
   }
 }
 
-// Ends the caller's computer session at once, so no later call can use it, and pauses its fork unless live view or a
-// call still in flight holds it (pauseAt). The fork keeps its tabs and files for the next open. A session the user's
-// takeover suspended is only ended. Then sweeps forks unused for a week (sweepForks), which a close can afford.
+// Ends the caller's computer session at once, so no later call can use it, and pauses its computer unless live view or a
+// call still in flight holds it (pauseAt). The computer keeps its tabs and files for the next open. A session the user's
+// takeover suspended is only ended. Then cleans up abandoned creates (sweepAbandoned), which a close can afford.
 export async function closeComputerSession(
   db: Database,
   deployment: Computers,
@@ -920,7 +861,7 @@ export async function closeComputerSession(
       );
     return { closed: true };
   });
-  if ('closed' in closed) await sweepForks(db, deployment).catch(error => logError('fork sweep', error));
+  if ('closed' in closed) await sweepAbandoned(db, deployment).catch(error => logError('computer sweep', error));
   return closed;
 }
 
@@ -993,341 +934,304 @@ export async function computerSessionState(
   return expired(found, now) ? 'ended' : 'open';
 }
 
-// --- Forks ---
-// Agents work in forks of the member's main computer, never in main. A fork is a computers row with fork_of set: a
-// copy of main from one of its snapshots, with its own computer sessions, calls, metering, and applies like any
-// computer. computer_open without an ID creates one; with its ID, any agent of the member reopens it, and forks unused
-// for FORK_UNUSED_MS are deleted unless the member pinned them (Pinned forks, below). Main is snapshotted when a fork
-// needs it and it has no snapshot, or a takeover ended since its latest (latestSnapshot). The provider keeps a snapshot until every fork made from it is deleted, so a
-// superseded snapshot is deleted once its last fork is (deleteUnusedSnapshots).
+// --- Computers ---
+// A member's computers are computers rows, each made from the template for one task, with its own sessions, calls,
+// metering, and applies; the latest capture applies on every open (a new computer has no baseline, so each site is
+// wholesale). computer_open without an ID creates one; with its ID, any agent of the member reopens it. The member's
+// cap (DEFAULT_MAX_COMPUTERS, or a deployment's limit) is the only limit: a reopen never checks it, since the computer
+// already counts, and a create at the cap replaces the least recently used replaceable one. Computers are never
+// deleted for disuse. Replacing a computer deletes its row in the transaction and kills its provider computer after
+// the commit, logging a failure and never failing the open for it.
 
-// Forks running at once across an organization's members, unless organizations.max_running_forks says otherwise. A
-// judgment call: plenty for a team's parallel agents, and far below E2B's concurrency limits (100 on Pro).
-export const DEFAULT_MAX_RUNNING_FORKS = 10;
-// Expired forks, or unused snapshots, deleted per sweep: each is a provider request a computer_close waits on.
+// Computers a member may have, unless the deployment's limit says otherwise (hooks.ts, Limits.computers). Enough for a
+// person's parallel agents, and it bounds storage for self-hosters, since computers are never deleted for disuse.
+export const DEFAULT_MAX_COMPUTERS = 10;
+// Abandoned creates deleted per sweep: each is a provider request a computer_close waits on.
 const SWEEP_BATCH = 3;
 
-const forkNotFound: ComputerFailure = {
+const computerNotFound: ComputerFailure = {
   error: 'computer_not_found',
   message:
-    'No such computer for this account. Pick one from computer_list, or call computer_open without computer_id for a new one.',
+    'No such computer for this account: it was replaced or deleted. Pick one from computer_list, or call computer_open without computer_id for a new one.',
 };
-// One of the member's forks by its public ID.
-const forkOfMember = (member: Pick<Member, 'membershipId'>, computerId: string) =>
-  and(
-    eq(schema.computers.publicId, computerId),
-    eq(schema.computers.membershipId, member.membershipId),
-    isNotNull(schema.computers.forkOf),
+// One of the member's computers by its public ID.
+const memberComputer = (member: Pick<Member, 'membershipId'>, computerId: string) =>
+  and(eq(schema.computers.publicId, computerId), eq(schema.computers.membershipId, member.membershipId));
+
+// The member's cap on their computers: the deployment's, else the product's.
+const capOf = async (db: Pick<Database, 'select'>, computers: Pick<Computers, 'limits'>, organizationId: string) =>
+  (await (computers.limits ?? noLimits).computers(db, organizationId)) ?? DEFAULT_MAX_COMPUTERS;
+
+// What replacing or trimming reads of a computer, and what killing it after the commit needs.
+const capColumns = {
+  id: schema.computers.id,
+  publicId: schema.computers.publicId,
+  sandboxId: schema.computers.sandboxId,
+  label: schema.computers.label,
+  status: schema.computers.status,
+  createdAt: schema.computers.createdAt,
+  updatedAt: schema.computers.updatedAt,
+  lastUsedAt: schema.computers.lastUsedAt,
+  runsUntil: schema.computers.runsUntil,
+  callsInFlight: schema.computers.callsInFlight,
+  takeoverUntil: schema.computers.takeoverUntil,
+};
+type CapRow = Pick<ComputerRow, keyof typeof capColumns>;
+type GoneComputer = Pick<ComputerRow, 'id' | 'publicId' | 'sandboxId'>;
+type Replaceable = CapRow & { replaceable: boolean };
+const lastUsedOf = (computer: Pick<CapRow, 'lastUsedAt' | 'createdAt'>) =>
+  (computer.lastUsedAt ?? computer.createdAt).getTime();
+// A computer that may go: ready and idle (not running, no takeover, no live session holding control, no call in
+// flight), or a create abandoned past CREATE_STALE_MS, which would otherwise count against a Free member's only place
+// until a sweep. Least recently used first.
+function replacementOrder(
+  rows: CapRow[],
+  live: { computerId: number; lastCallAt: Date; suspendedAt: Date | null }[],
+  now: Date,
+) {
+  const controlled = new Set(live.filter(session => holdsControl(session, now)).map(session => session.computerId));
+  return rows
+    .map(
+      (row): Replaceable => ({
+        ...row,
+        replaceable:
+          row.status === 'ready'
+            ? !running(row, now) &&
+              !takenOver(row, now) &&
+              !controlled.has(row.id) &&
+              !liveCalls(row.callsInFlight, now).length
+            : row.updatedAt.getTime() <= now.getTime() - CREATE_STALE_MS,
+      }),
+    )
+    .sort((a, b) => lastUsedOf(a) - lastUsedOf(b) || a.id - b.id);
+}
+// The member's computers as replacement reads them, under the lock that serializes the member's creates and trims, so
+// two cannot both take the last place, and each row's lock, so a concurrent reopen or call either finished first (and
+// its lastUsedAt, runsUntil, and callsInFlight count here) or sees the row gone. Taken after the user row and before
+// any computer row.
+async function lockedByCap(tx: Transaction, member: Pick<Member, 'membershipId'>, now: Date) {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('agent-computers-members'), hashtext(${String(member.membershipId)}))`,
+  );
+  const rows = await tx
+    .select(capColumns)
+    .from(schema.computers)
+    .where(eq(schema.computers.membershipId, member.membershipId))
+    .orderBy(asc(schema.computers.id))
+    .for('update');
+  return replacementOrder(rows, await liveControl(tx, rows), now);
+}
+// The computers' live sessions, for whether one holds control (under the computer row locks when the caller holds them).
+const liveControl = (tx: Pick<Database, 'select'>, rows: { id: number }[]) =>
+  rows.length
+    ? tx
+        .select({
+          computerId: schema.computerSessions.computerId,
+          lastCallAt: schema.computerSessions.lastCallAt,
+          suspendedAt: schema.computerSessions.suspendedAt,
+        })
+        .from(schema.computerSessions)
+        .where(
+          and(
+            inArray(
+              schema.computerSessions.computerId,
+              rows.map(row => row.id),
+            ),
+            isNull(schema.computerSessions.endedAt),
+          ),
+        )
+    : Promise.resolve([]);
+const forgetComputers = (tx: Pick<Database, 'delete'>, rows: GoneComputer[]) =>
+  rows.length
+    ? tx.delete(schema.computers).where(
+        inArray(
+          schema.computers.id,
+          rows.map(row => row.id),
+        ),
+      )
+    : Promise.resolve();
+// Every provider computer the rows recorded, or that an in-flight create made under the computer's public ID.
+async function killProviderComputer(provider: ComputerProvider, computer: Pick<ComputerRow, 'publicId' | 'sandboxId'>) {
+  for (const sandboxId of new Set([computer.sandboxId, await provider.find(computer.publicId)]))
+    if (sandboxId) await provider.kill(sandboxId);
+}
+// Kills the provider computers of rows already deleted; a failure is logged, and never fails the caller.
+const killReplaced = (provider: ComputerProvider, gone: GoneComputer[]) =>
+  Promise.all(
+    gone.map(computer => killProviderComputer(provider, computer).catch(error => logError('computer replace', error))),
   );
 
-// A new fork from main's latest snapshot, with the caller's session on it, recorded as `creating` and running (for the
-// cap and metering) until provisionFork creates its provider computer.
-async function createFork(
+// A lowered cap: deletes replaceable computers past the member's cap, keeping the most recently used. Lazy, since the
+// open core has no scheduler: it runs at the start of every computer_open and when listing a member's computers, and
+// leaves running ones for a later pass. A failure is logged, and never fails the open or the list.
+async function trimComputers(
+  db: Database,
+  computers: Pick<Computers, 'provider' | 'accounts' | 'limits'>,
+  member: Pick<Member, 'membershipId' | 'organizationId'>,
+  now = new Date(),
+) {
+  try {
+    const cap = await capOf(db, computers, member.organizationId);
+    const [held] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(schema.computers)
+      .where(eq(schema.computers.membershipId, member.membershipId));
+    if ((held?.count ?? 0) <= cap) return;
+    const gone = await db.transaction(async tx => {
+      const rows = await lockedByCap(tx, member, now);
+      const past = rows.slice(0, Math.max(0, rows.length - cap)).filter(row => row.replaceable);
+      await forgetComputers(tx, past);
+      return past;
+    });
+    await killReplaced((await providerFor(computers, db, member.organizationId)).provider, gone);
+  } catch (error) {
+    logError('computer trim', error);
+  }
+}
+
+const noComputersAllowed: ComputerFailure = {
+  error: 'busy',
+  message: "This account's plan allows no computers. Start a plan to use computers.",
+};
+// Why a create at the cap can't replace anything: every computer is in use. Until the first of them is due to pause.
+function capFailure(rows: CapRow[], cap: number, now: Date): ComputerFailure {
+  const pauses = rows.flatMap(row => (running(row, now) ? [row.runsUntil!.getTime()] : []));
+  if (!pauses.length)
+    return {
+      error: 'busy',
+      message: `All ${cap} of this account's computers are in use. Try again in a few minutes, or delete one with computer_delete.`,
+    };
+  const busyUntil = new Date(Math.min(...pauses));
+  return {
+    error: 'busy',
+    busyUntil,
+    message: `All ${cap} of this account's computers are in use. Try again after ${busyUntil.toISOString()}, when the first is due to pause, or delete one with computer_delete.`,
+  };
+}
+// Reserves a place for a new computer, inside the caller's transaction: a new row, `creating`, at the member's chosen
+// size, and, at the cap, the row of the least recently used replaceable computer deleted. A member over the cap (a
+// lowered cap with running computers past it) gets `busy` until those are trimmed. `confirmed`, the page's confirmation,
+// names the computer it agreed to replace.
+async function reserveComputer(
+  tx: Transaction,
+  computers: InOrganization,
+  member: Member,
+  label: string | undefined,
+  now: Date,
+  confirmed?: { replace: string | undefined },
+): Promise<{ computer: ComputerRow; replaced: GoneComputer[] } | ComputerFailure> {
+  const cap = await capOf(tx, computers, member.organizationId);
+  if (cap <= 0) return noComputersAllowed;
+  const rows = await lockedByCap(tx, member, now);
+  let replaced: GoneComputer[] = [];
+  if (rows.length >= cap) {
+    const candidate = rows.length === cap ? rows.find(row => row.replaceable) : undefined;
+    if (!candidate) return capFailure(rows, cap, now);
+    if (confirmed && confirmed.replace !== candidate.publicId)
+      return {
+        error: 'confirm_replace',
+        message: 'The computer a new one would replace changed. Check the list and try again.',
+      };
+    await forgetComputers(tx, [candidate]);
+    replaced = [candidate];
+  }
+  const [computer] = await tx
+    .insert(schema.computers)
+    .values({
+      publicId: newPublicId('computer', now.getTime()),
+      membershipId: member.membershipId,
+      createdAt: now,
+      lastUsedAt: now,
+      label: label ?? null,
+      size: sql`(select ${schema.memberships.computerSize} from ${schema.memberships} where ${schema.memberships.id} = ${member.membershipId})`,
+    })
+    .returning(computerColumns);
+  return { computer: computer!, replaced };
+}
+
+// A new computer with the caller's session on it, recorded as `creating` and running (for metering) until
+// provisionComputer creates its provider computer. At the cap, it replaces the member's least recently used replaceable
+// computer (reserveComputer).
+async function createComputer(
   db: Database,
   computers: InOrganization,
   caller: Caller,
   label: string | undefined,
   choice: ProfileChoice,
 ): Promise<Started | ComputerFailure> {
-  const main = await ensureComputer(db, computers, caller);
-  if ('error' in main) return main;
-  const latest = await latestSnapshot(db, computers, caller, main.id);
-  if ('error' in latest) return latest;
   return db.transaction(async (tx): Promise<Started | ComputerFailure> => {
     const denied = await guardFailure(tx, caller);
     if (denied) return denied;
     const now = new Date();
-    const full = await capFailure(tx, computers, caller, now);
-    if (full) return full;
-    // Main's latest snapshot, read under main's row lock, so one superseded since is never used; the fork's reference
-    // then keeps it from being deleted (deleteUnusedSnapshots).
-    await tx
-      .select({ id: schema.computers.id })
-      .from(schema.computers)
-      .where(eq(schema.computers.id, main.id))
-      .for('share');
-    const [current] = await tx
-      .select({ snapshot: schema.computerSnapshots, mainPublicId: schema.computers.publicId })
-      .from(schema.computers)
-      .innerJoin(schema.computerSnapshots, eq(schema.computerSnapshots.id, schema.computers.snapshotId))
-      .where(eq(schema.computers.id, main.id));
-    if (!current) return resetting;
-    const { snapshot } = current;
-    const publicId = newPublicId('computer', now.getTime());
-    const [fork] = await tx
-      .insert(schema.computers)
-      .values({
-        publicId,
-        membershipId: caller.membershipId,
-        createdAt: now,
-        forkOf: main.id,
-        // The snapshot's memory needs main's CPUs and memory, so the fork runs at main's size.
-        size: main.size,
-        snapshotId: snapshot.id,
-        label: label ?? null,
-        lastUsedAt: now,
-        timeZone: snapshot.timeZone,
-        revision: snapshot.revision,
-      })
-      .returning(computerColumns);
-    // What main's profiles had applied, so the first apply on the fork sends only what changed since.
-    const inherited = await tx
-      .select()
-      .from(schema.computerProfiles)
-      .where(eq(schema.computerProfiles.snapshotId, snapshot.id));
-    if (inherited.length)
-      await tx.insert(schema.computerProfiles).values(
-        inherited.map(row => ({
-          computerId: fork!.id,
-          connectedBrowserId: row.connectedBrowserId,
-          chromeProfile: row.chromeProfile,
-          appliedCaptureDigest: row.appliedCaptureDigest,
-          appliedCaptureAt: row.appliedCaptureAt,
-          syncedSites: row.syncedSites,
-          appliedCapture: resealBaseline(row.appliedCapture, caller, current.mainPublicId, publicId),
-          languages: row.languages,
-          platform: row.platform,
-        })),
-      );
-    const started = await startSession(tx, caller, fork!, undefined, now, choice);
+    const reserved = await reserveComputer(tx, computers, caller, label, now);
+    if ('error' in reserved) return reserved;
+    const started = await startSession(tx, caller, reserved.computer, undefined, now, choice);
     if ('error' in started) return started;
-    await meter(tx, computers.account, fork!.id, caller, new Date(now.getTime() + CALL_HOLD_MS));
-    return { ...started, computer: fork!, sandboxId: null, created: true };
+    await meter(tx, computers.account, reserved.computer.id, caller, new Date(now.getTime() + CALL_HOLD_MS));
+    return { ...started, computer: reserved.computer, sandboxId: null, created: true, replaced: reserved.replaced };
   });
 }
-// The applied capture's baseline is sealed for one computer, so a fork gets main's sealed for it. One that cannot be
-// opened gives none, so the fork's next apply replaces each site wholesale.
-function resealBaseline(sealed: string | null, member: Owner, from: string, to: string) {
-  if (!sealed) return null;
-  try {
-    return sealAppliedCapture(openAppliedCapture(sealed, member, from), member, to);
-  } catch (error) {
-    logError('applied capture', error);
-    return null;
-  }
-}
 
-// Creates a new fork's provider computer from its snapshot. A failure deletes the fork, and its provider computer if
+// Creates a new computer's provider computer from the template. A failure deletes the row, and its provider computer if
 // the create got that far, so nothing stays `creating`.
-async function provisionFork(db: Database, provider: ComputerProvider, fork: Pick<ComputerRow, 'id' | 'publicId'>) {
+async function provisionComputer(
+  db: Database,
+  provider: ComputerProvider,
+  computer: Pick<ComputerRow, 'id' | 'publicId' | 'size'>,
+) {
   markToolStep('create');
   try {
-    const [row] = await db
-      .select({ snapshot: schema.computerSnapshots.providerSnapshotId })
-      .from(schema.computers)
-      .innerJoin(schema.computerSnapshots, eq(schema.computerSnapshots.id, schema.computers.snapshotId))
-      .where(eq(schema.computers.id, fork.id));
-    if (!row) throw new Error('fork snapshot missing');
-    const sandboxId = await provider.createFromSnapshot(row.snapshot, fork.publicId, CALL_HOLD_MS);
-    // Conditional: a membership removal may have deleted the fork meanwhile.
+    const sandboxId = await provider.create(computer.publicId, CALL_HOLD_MS, computer.size);
+    // Conditional: a removal, deletion, or stale-create cleanup may have deleted the row meanwhile.
     const [ready] = await db
       .update(schema.computers)
       .set({ status: 'ready', sandboxId })
-      .where(and(eq(schema.computers.id, fork.id), eq(schema.computers.status, 'creating')))
+      .where(and(eq(schema.computers.id, computer.id), eq(schema.computers.status, 'creating')))
       .returning({ id: schema.computers.id });
-    if (!ready) throw new Error('fork deleted while it was created');
+    if (!ready) throw new Error('computer deleted while it was created');
     return sandboxId;
   } catch (error) {
-    const created = await provider.find(fork.publicId).catch(() => null);
-    if (created) await provider.kill(created).catch(killError => logError('fork create cleanup', killError));
+    const created = await provider.find(computer.publicId).catch(() => null);
+    if (created) await provider.kill(created).catch(killError => logError('computer create cleanup', killError));
     // Its computer session goes with it (cascade).
     await db
       .delete(schema.computers)
-      .where(eq(schema.computers.id, fork.id))
-      .catch(deleteError => logError('fork create cleanup', deleteError));
+      .where(eq(schema.computers.id, computer.id))
+      .catch(deleteError => logError('computer create cleanup', deleteError));
     throw error;
   }
 }
 
-// Reopens one of the caller's member's forks for a new computer session.
-async function reopenFork(
+// Reopens one of the caller's member's computers for a new computer session.
+async function reopenComputer(
   db: Database,
-  computers: Computers,
   caller: Caller,
   computerId: string,
   sessionId: string | undefined,
   choice: ProfileChoice,
 ): Promise<Started | ComputerFailure> {
-  if (!COMPUTER_ID_PATTERN.test(computerId)) return forkNotFound;
+  if (!COMPUTER_ID_PATTERN.test(computerId)) return computerNotFound;
   return db.transaction(async (tx): Promise<Started | ComputerFailure> => {
     const denied = await guardFailure(tx, caller);
     if (denied) return denied;
     const now = new Date();
-    const cap = await lockForkCap(tx, computers, caller);
-    const [fork] = await tx
+    const [computer] = await tx
       .select(computerColumns)
       .from(schema.computers)
-      .where(forkOfMember(caller, computerId))
+      .where(memberComputer(caller, computerId))
       .for('update');
-    if (!fork) return forkNotFound;
-    if (fork.status !== 'ready' || !fork.sandboxId)
+    if (!computer) return computerNotFound;
+    if (computer.status !== 'ready' || !computer.sandboxId)
       return { error: 'starting', message: 'This computer is still being created. Try again in a few seconds.' };
-    // One already running adds nothing to the organization's running forks.
-    if (!running(fork, now)) {
-      const full = await capFailure(tx, computers, caller, now, cap);
-      if (full) return full;
-    }
-    const started = await startSession(tx, caller, fork, sessionId, now, choice);
+    const started = await startSession(tx, caller, computer, sessionId, now, choice);
     if ('error' in started) return started;
-    return { ...started, computer: fork, sandboxId: fork.sandboxId, created: false };
+    return { ...started, computer, sandboxId: computer.sandboxId, created: false, replaced: [] };
   });
 }
 
-// The organization's cap on running forks, under a lock that serializes opens across its members, so two cannot both
-// take the last place: its own max_running_forks, else the deployment's limit, else the product's. Taken after the
-// user row and before any computer row.
-async function lockForkCap(tx: Transaction, computers: Computers, member: Member) {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('agent-computers-forks'), hashtext(${member.organizationId}))`,
-  );
-  const [organization] = await tx
-    .select({ max: schema.organizations.maxRunningForks })
-    .from(schema.organizations)
-    .where(eq(schema.organizations.publicId, member.organizationId));
-  if (organization?.max != null) return organization.max;
-  return (await (computers.limits ?? noLimits).runningForks(tx, member.organizationId)) ?? DEFAULT_MAX_RUNNING_FORKS;
-}
-// busy once the organization's running forks (not yet paused, or being created) reach its cap, until the first of
-// them is due to pause.
-async function capFailure(
-  tx: Transaction,
-  computers: Computers,
-  member: Member,
-  now: Date,
-  locked?: number,
-): Promise<ComputerFailure | null> {
-  const cap = locked ?? (await lockForkCap(tx, computers, member));
-  const forks = await tx
-    .select({ runsUntil: schema.computers.runsUntil })
-    .from(schema.computers)
-    .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
-    .where(
-      and(
-        eq(schema.memberships.organizationId, member.organizationId),
-        isNotNull(schema.computers.forkOf),
-        or(gt(schema.computers.runsUntil, now), eq(schema.computers.status, 'creating')),
-      ),
-    );
-  if (forks.length < cap) return null;
-  const pauses = forks.flatMap(fork => (fork.runsUntil ? [fork.runsUntil.getTime()] : []));
-  if (!pauses.length)
-    return {
-      error: 'busy',
-      message: 'Your organization allows no computers to run. Ask its owner to raise the limit.',
-    };
-  const busyUntil = new Date(Math.min(...pauses));
-  return {
-    error: 'busy',
-    busyUntil,
-    message: `All ${cap} computers your organization may run at once are running. Try again after ${busyUntil.toISOString()}, when the first is due to pause.`,
-  };
-}
-
-// Main's latest snapshot, which new forks start from: a new one first when main has none, or a takeover ended since
-// (snapshotDueAt, or a lapsed takeover not yet ended), so the next fork has what the member signed in to. Taken under
-// main's row lock, so concurrent opens take one, and never during a takeover, whose connections it would drop. Main is
-// paused right after unless live view holds it. A failure keeps the previous snapshot, and the next fork retries;
-// without one, the open fails.
-async function latestSnapshot(
-  db: Database,
-  { provider, account }: InOrganization,
-  member: Member,
-  mainId: number,
-): Promise<{ id: number } | ComputerFailure> {
-  let superseded: number | null = null;
-  const latest = await db.transaction(async (tx): Promise<{ id: number } | ComputerFailure> => {
-    let [main] = await tx.select().from(schema.computers).where(eq(schema.computers.id, mainId)).for('update');
-    if (main?.status !== 'ready' || !main.sandboxId) return resetting;
-    const { sandboxId } = main;
-    const now = new Date();
-    const due = !main.snapshotId || !!main.snapshotDueAt || lapsed(main, now);
-    if (lapsed(main, now)) main = await endTakeover(tx, main, now);
-    if (main.snapshotId && (!due || takenOver(main, now))) return { id: main.snapshotId };
-    if (takenOver(main, now)) return userBusy;
-    let providerSnapshotId: string;
-    try {
-      // Metered first, like a call: a paused main is resumed for the snapshot. Live view may hold it longer.
-      const hold = new Date(now.getTime() + SNAPSHOT_HOLD_MS);
-      const held = pauseAt(main, null, now);
-      await meter(tx, account, main.id, member, held > hold ? held : hold);
-      markToolStep('snapshot');
-      providerSnapshotId = await provider.snapshot(sandboxId, SNAPSHOT_HOLD_MS);
-    } catch (error) {
-      if (!main.snapshotId) throw error;
-      logError('computer snapshot', error);
-      return { id: main.snapshotId };
-    }
-    const [snapshot] = await tx
-      .insert(schema.computerSnapshots)
-      .values({ computerId: main.id, providerSnapshotId, timeZone: main.timeZone, revision: main.revision })
-      .returning({ id: schema.computerSnapshots.id });
-    // Main's profiles as it has them, baselines sealed for main as they are.
-    const profiles = await tx
-      .select()
-      .from(schema.computerProfiles)
-      .where(eq(schema.computerProfiles.computerId, main.id));
-    if (profiles.length)
-      await tx.insert(schema.computerProfiles).values(
-        profiles.map(({ id: _id, computerId: _main, createdAt: _created, updatedAt: _updated, ...row }) => ({
-          ...row,
-          snapshotId: snapshot!.id,
-        })),
-      );
-    await tx
-      .update(schema.computers)
-      .set({ snapshotId: snapshot!.id, snapshotDueAt: null })
-      .where(eq(schema.computers.id, main.id));
-    superseded = main.snapshotId;
-    const after = new Date();
-    await pauseComputer(
-      tx,
-      account,
-      main.id,
-      member,
-      pauseAt(main, null, after),
-      after,
-      pauseByProvider(provider, sandboxId),
-    );
-    return { id: snapshot!.id };
-  });
-  if (superseded) await deleteUnusedSnapshots(db, { provider }, [superseded]);
-  return latest;
-}
-
-// Snapshots that are no longer main's latest and that no fork was made from, at most SWEEP_BATCH of them (only these
-// IDs, when given): deleted at the provider, which refuses earlier, then here. Each is re-checked under its row lock,
-// which a fork's insert referencing it waits on, so a fork never starts from a deleted snapshot. Each is deleted on
-// its organization's provider.
-async function deleteUnusedSnapshots(db: Database, providers: Providers, only?: number[]) {
-  const unused = sql`NOT EXISTS (SELECT 1 FROM ${schema.computers} WHERE ${schema.computers.snapshotId} = ${schema.computerSnapshots.id})`;
-  const candidates = await db
-    .select({ id: schema.computerSnapshots.id, organizationId: schema.memberships.organizationId })
-    .from(schema.computerSnapshots)
-    .innerJoin(schema.computers, eq(schema.computers.id, schema.computerSnapshots.computerId))
-    .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
-    .where(and(unused, only ? inArray(schema.computerSnapshots.id, only) : undefined))
-    .limit(SWEEP_BATCH);
-  for (const { id, organizationId } of candidates)
-    await db
-      .transaction(async tx => {
-        const [row] = await tx
-          .select({ providerSnapshotId: schema.computerSnapshots.providerSnapshotId })
-          .from(schema.computerSnapshots)
-          .where(and(eq(schema.computerSnapshots.id, id), unused))
-          .for('update');
-        if (!row) return;
-        const { provider } = await providerFor(providers, db, organizationId);
-        await provider.deleteSnapshot(row.providerSnapshotId);
-        await tx.delete(schema.computerSnapshots).where(eq(schema.computerSnapshots.id, id));
-      })
-      .catch(error => logError('snapshot delete', error));
-}
-
-export type ForkView = {
+export type ListedComputer = {
   computerId: string;
   label: string | null;
-  // The member pinned it: label is its name, and it is never deleted for disuse.
-  pinned: boolean;
   createdAt: string;
   lastUsedAt: string;
   // in_use: a computer session holds control, or the user took it over in live view.
@@ -1336,14 +1240,19 @@ export type ForkView = {
   // client's ID points, or an API key's name.
   agent: { agent: AgentKind | null; host: string } | null;
 };
-// The member's forks, most recently used first.
-export async function listForks(db: Database, member: Member, now = new Date()): Promise<ForkView[]> {
-  const forks = await db
+// The member's computers, most recently used first, after trimming any past the cap (trimComputers).
+export async function listComputers(
+  db: Database,
+  deployment: Pick<Computers, 'provider' | 'accounts' | 'limits'>,
+  member: Pick<Member, 'membershipId' | 'organizationId'>,
+  now = new Date(),
+): Promise<ListedComputer[]> {
+  await trimComputers(db, deployment, member, now);
+  const rows = await db
     .select({
       id: schema.computers.id,
       publicId: schema.computers.publicId,
       label: schema.computers.label,
-      pinnedAt: schema.computers.pinnedAt,
       status: schema.computers.status,
       createdAt: schema.computers.createdAt,
       lastUsedAt: schema.computers.lastUsedAt,
@@ -1351,9 +1260,8 @@ export async function listForks(db: Database, member: Member, now = new Date()):
       takeoverUntil: schema.computers.takeoverUntil,
     })
     .from(schema.computers)
-    .where(and(eq(schema.computers.membershipId, member.membershipId), isNotNull(schema.computers.forkOf)))
-    .orderBy(desc(schema.computers.lastUsedAt));
-  const live = forks.length
+    .where(eq(schema.computers.membershipId, member.membershipId));
+  const live = rows.length
     ? await db
         .select({
           computerId: schema.computerSessions.computerId,
@@ -1368,7 +1276,7 @@ export async function listForks(db: Database, member: Member, now = new Date()):
           and(
             inArray(
               schema.computerSessions.computerId,
-              forks.map(fork => fork.id),
+              rows.map(row => row.id),
             ),
             isNull(schema.computerSessions.endedAt),
           ),
@@ -1385,47 +1293,53 @@ export async function listForks(db: Database, member: Member, now = new Date()):
           : { agent: null, host: `${keyName ?? 'An'} API key` },
       ]),
   );
-  return forks.map(fork => ({
-    computerId: fork.publicId,
-    label: fork.label,
-    pinned: !!fork.pinnedAt,
-    createdAt: fork.createdAt.toISOString(),
-    lastUsedAt: (fork.lastUsedAt ?? fork.createdAt).toISOString(),
-    status:
-      fork.status === 'creating'
-        ? 'starting'
-        : controlled.has(fork.id) || takenOver(fork, now)
-          ? 'in_use'
-          : running(fork, now)
-            ? 'running'
-            : 'paused',
-    agent: agents.get(fork.id) ?? null,
-  }));
+  return rows
+    .sort((a, b) => lastUsedOf(b) - lastUsedOf(a))
+    .map(row => ({
+      computerId: row.publicId,
+      label: row.label,
+      createdAt: row.createdAt.toISOString(),
+      lastUsedAt: (row.lastUsedAt ?? row.createdAt).toISOString(),
+      status:
+        row.status === 'creating'
+          ? 'starting'
+          : controlled.has(row.id) || takenOver(row, now)
+            ? 'in_use'
+            : running(row, now)
+              ? 'running'
+              : 'paused',
+      agent: agents.get(row.id) ?? null,
+    }));
 }
 
-// Deletes one of the member's forks, with what was on it. Another agent's session holding control of it, or the user's
-// takeover, means `busy`; the caller's own agent's session just ends.
-export async function deleteFork(
+// Deletes one of the member's computers, with what was on it, for the member from the page or an agent (with its
+// access re-checked). Another session holding control of it, or the user's takeover, means `busy`; an agent's own
+// session just ends with it. Kills its provider computer in the transaction, under the row lock, so a failed kill keeps
+// the row for a retry and no reopen can start on a computer being killed.
+export async function deleteComputer(
   db: Database,
   deployment: Computers,
-  caller: Caller,
+  actor: Member | Caller,
   computerId: string,
 ): Promise<{ deleted: true } | ComputerFailure> {
-  if (!COMPUTER_ID_PATTERN.test(computerId)) return forkNotFound;
-  const { provider } = await providerFor(deployment, db, caller.organizationId);
-  const found = await db.transaction(async (tx): Promise<ComputerRow | ComputerFailure> => {
-    const denied = await guardFailure(tx, caller);
-    if (denied) return denied;
-    const [fork] = await tx
+  if (!COMPUTER_ID_PATTERN.test(computerId)) return computerNotFound;
+  const agent = 'clientId' in actor || 'apiKeyId' in actor ? (actor as Caller) : null;
+  const { provider } = await providerFor(deployment, db, actor.organizationId);
+  const deleted = await db.transaction(async (tx): Promise<{ deleted: true } | ComputerFailure> => {
+    if (agent) {
+      const denied = await guardFailure(tx, agent);
+      if (denied) return denied;
+    }
+    const [computer] = await tx
       .select(computerColumns)
       .from(schema.computers)
-      .where(forkOfMember(caller, computerId))
+      .where(memberComputer(actor, computerId))
       .for('update');
-    if (!fork) return forkNotFound;
+    if (!computer) return computerNotFound;
     const now = new Date();
-    if (takenOver(fork, now)) return userBusy;
-    const live = await liveSession(tx, fork.id);
-    if (live && holdsControl(live, now) && !isCallers(live, caller)) {
+    if (takenOver(computer, now)) return userBusy;
+    const live = await liveSession(tx, computer.id);
+    if (live && holdsControl(live, now) && !(agent && isCallers(live, agent))) {
       const busyUntil = new Date(live.lastCallAt.getTime() + IDLE_PAUSE_MS);
       return {
         error: 'busy',
@@ -1433,165 +1347,149 @@ export async function deleteFork(
         message: `Another agent is using this computer. Try again after ${busyUntil.toISOString()}, when its idle minute ends.`,
       };
     }
-    if (live) await endSession(tx, live.id, 'closed', now);
-    return fork;
+    await killProviderComputer(provider, computer);
+    // Its computer sessions go with it (cascade).
+    await tx.delete(schema.computers).where(eq(schema.computers.id, computer.id));
+    return { deleted: true };
   });
-  if ('error' in found) return found;
-  await destroyFork(db, provider, found);
-  await sweepForks(db, deployment).catch(error => logError('fork sweep', error));
-  return { deleted: true };
+  if ('deleted' in deleted) await sweepAbandoned(db, deployment).catch(error => logError('computer sweep', error));
+  return deleted;
 }
-// Kills a fork's provider computer, recorded or not, then forgets the fork (its sessions go with it) and deletes its
-// snapshot if nothing else uses it. A failed kill keeps the row, for a retry.
-async function destroyFork(
-  db: Database,
-  provider: ComputerProvider,
-  fork: Pick<ComputerRow, 'id' | 'publicId' | 'sandboxId' | 'snapshotId'>,
-) {
-  await killFork(provider, fork);
-  await db.delete(schema.computers).where(eq(schema.computers.id, fork.id));
-  if (fork.snapshotId) await deleteUnusedSnapshots(db, { provider }, [fork.snapshotId]);
-}
-const killFork = async (provider: ComputerProvider, fork: Pick<ComputerRow, 'publicId' | 'sandboxId'>) => {
-  for (const sandboxId of new Set([fork.sandboxId, await provider.find(fork.publicId)]))
-    if (sandboxId) await provider.kill(sandboxId);
-};
 
-// Deletes, across the deployment, forks unused for FORK_UNUSED_MS and paused but not pinned, and forks whose create was
-// abandoned (CREATE_STALE_MS), pinned or not, then snapshots nothing uses, SWEEP_BATCH of each per run. The open core has no scheduler, so this
-// runs on the calls that can afford it, computer_close and deleting a fork, as tool call retention runs on each call.
-// Each fork is killed on its organization's provider.
-export async function sweepForks(db: Database, providers: Providers, now = new Date()) {
+// Deletes, across the deployment, computers whose create was abandoned (CREATE_STALE_MS), SWEEP_BATCH per run. The open
+// core has no scheduler, so this runs on the calls that can afford it, computer_close and deleting a computer, as tool
+// call retention runs on each call. Each is killed on its organization's provider. Computers are never deleted for
+// disuse.
+export async function sweepAbandoned(db: Database, providers: Providers, now = new Date()) {
   const due = and(
-    isNotNull(schema.computers.forkOf),
-    or(
-      and(
-        eq(schema.computers.status, 'ready'),
-        isNull(schema.computers.pinnedAt),
-        lt(schema.computers.lastUsedAt, new Date(now.getTime() - FORK_UNUSED_MS)),
-        or(isNull(schema.computers.runsUntil), lt(schema.computers.runsUntil, now)),
-      ),
-      and(
-        eq(schema.computers.status, 'creating'),
-        lt(schema.computers.updatedAt, new Date(now.getTime() - CREATE_STALE_MS)),
-      ),
-    ),
+    eq(schema.computers.status, 'creating'),
+    lt(schema.computers.updatedAt, new Date(now.getTime() - CREATE_STALE_MS)),
   );
-  const expired = await db
+  const abandoned = await db
     .select({ id: schema.computers.id, organizationId: schema.memberships.organizationId })
     .from(schema.computers)
     .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
     .where(due)
     .limit(SWEEP_BATCH);
-  for (const { id, organizationId } of expired)
+  for (const { id, organizationId } of abandoned)
     await db
       .transaction(async tx => {
-        // Re-checked under the row lock, so a reopen that just used it keeps it.
-        const [fork] = await tx
+        // Re-checked under the row lock, so a create that just finished keeps it.
+        const [computer] = await tx
           .select(computerColumns)
           .from(schema.computers)
           .where(and(eq(schema.computers.id, id), due))
           .for('update');
-        if (!fork) return;
-        await killFork((await providerFor(providers, db, organizationId)).provider, fork);
+        if (!computer) return;
+        await killProviderComputer((await providerFor(providers, db, organizationId)).provider, computer);
         await tx.delete(schema.computers).where(eq(schema.computers.id, id));
       })
-      .catch(error => logError('fork expiry', error));
-  await deleteUnusedSnapshots(db, providers);
+      .catch(error => logError('computer sweep', error));
 }
 
-// --- Pinned forks ---
-// A member pins one of their forks to keep it as their agents' own computer: it takes the member's name for it (its
-// label), shows on the Computer page even while paused, and is never deleted for disuse (sweepForks). Otherwise it is a
-// fork like any: each open applies the latest capture, nothing flows back to main, and resetting main deletes it. A
-// deployment may cap the forks an organization's members have pinned (hooks.ts, Limits.pinnedForks).
-export type PinFailure = { error: 'not_found' } | { error: 'pinned_fork_limit'; limit: number };
-
-// Pins one of the member's forks under `label` (1 to 100 characters, as computers_label checks), or renames one
-// already pinned, which takes no new place. The cap is counted under a lock that serializes pins across the
-// organization's members, so two cannot both take the last place; the fork's row lock keeps a sweep from deleting it
-// meanwhile (sweepForks re-checks under it).
-export async function pinFork(
-  db: Database,
-  limits: Limits,
-  member: Member,
-  computerId: string,
-  label: string,
-  now = new Date(),
-): Promise<{ pinned: true; label: string } | PinFailure> {
-  if (!COMPUTER_ID_PATTERN.test(computerId)) return { error: 'not_found' };
-  return db.transaction(async (tx): Promise<{ pinned: true; label: string } | PinFailure> => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext('agent-computers-pinned-forks'), hashtext(${member.organizationId}))`,
-    );
-    const [fork] = await tx
-      .select({ id: schema.computers.id, pinnedAt: schema.computers.pinnedAt })
-      .from(schema.computers)
-      .where(forkOfMember(member, computerId))
-      .for('update');
-    if (!fork) return { error: 'not_found' };
-    if (!fork.pinnedAt) {
-      const limit = await limits.pinnedForks(tx, member.organizationId);
-      if (limit !== null) {
-        const [pinned] = await tx
-          .select({ count: sql`count(*)`.mapWith(Number) })
-          .from(schema.computers)
-          .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
-          .where(
-            and(eq(schema.memberships.organizationId, member.organizationId), isNotNull(schema.computers.pinnedAt)),
-          );
-        if ((pinned?.count ?? 0) >= limit) return { error: 'pinned_fork_limit', limit };
-      }
-    }
-    await tx
-      .update(schema.computers)
-      .set({ label, pinnedAt: fork.pinnedAt ?? now, updatedAt: now })
-      .where(eq(schema.computers.id, fork.id));
-    return { pinned: true, label };
-  });
-}
-
-// Unpins one of the member's forks, keeping its name as its label. Unpinning counts as a use, so the fork has
-// FORK_UNUSED_MS from now before a sweep deletes it, rather than going at the next one.
-export async function unpinFork(
-  db: Database,
-  member: Member,
-  computerId: string,
-  now = new Date(),
-): Promise<{ pinned: false } | { error: 'not_found' }> {
-  if (!COMPUTER_ID_PATTERN.test(computerId)) return { error: 'not_found' };
-  const [fork] = await db
-    .update(schema.computers)
-    .set({ pinnedAt: null, lastUsedAt: now, updatedAt: now })
-    .where(forkOfMember(member, computerId))
-    .returning({ id: schema.computers.id });
-  return fork ? { pinned: false } : { error: 'not_found' };
-}
-
-// Kills every provider computer of a member's that is going away (main and forks), then their snapshots, which the
-// provider deletes only once no computer made from them remains. Recorded or not: a create in flight is found by its ID.
+// Kills every provider computer of a member's that is going away. Recorded or not: a create in flight is found by its
+// ID.
 export async function destroyProviderComputers(
   provider: ComputerProvider,
   computers: { publicId: string; sandboxId: string | null }[],
-  snapshotIds: string[],
 ) {
-  for (const computer of computers)
-    for (const sandboxId of new Set([computer.sandboxId, await provider.find(computer.publicId)]))
-      if (sandboxId) await provider.kill(sandboxId);
-  for (const snapshotId of snapshotIds)
-    await provider.deleteSnapshot(snapshotId).catch(error => logError('snapshot delete', error));
+  for (const computer of computers) await killProviderComputer(provider, computer);
 }
+
+// The page's New computer: a computer with no agent attached, from the template, with the member's default profile's
+// latest capture applied, left paused. At the cap it replaces the least recently used replaceable computer, but only
+// the one the page confirmed (the page shows which, computerView's `replaces`, and passes it as `replace`); otherwise
+// `confirm_replace`. Busy when every computer is running. Answers with the new computer's ID.
+export async function createPausedComputer(
+  db: Database,
+  deployment: Computers,
+  member: Member,
+  { replace }: { replace?: string | undefined } = {},
+): Promise<{ computerId: string } | ComputerFailure> {
+  const exhausted = await creditFailure(deployment.metering, db, member);
+  if (exhausted) return exhausted;
+  const computers = await inOrganization(deployment, db, member.organizationId);
+  await trimComputers(db, computers, member);
+  const reserved = await db.transaction(async tx => {
+    const now = new Date();
+    const made = await reserveComputer(tx, computers, member, undefined, now, { replace });
+    if ('error' in made) return made;
+    await meter(tx, computers.account, made.computer.id, member, new Date(now.getTime() + CALL_HOLD_MS));
+    return made;
+  });
+  if ('error' in reserved) return reserved;
+  const { computer, replaced } = reserved;
+  const replacing = killReplaced(computers.provider, replaced);
+  try {
+    const sandboxId = await provisionComputer(db, computers.provider, computer);
+    await replacing;
+    await applyNewComputer(db, computers, member, computer, sandboxId);
+    await pauseIdle(db, computers, member, computer.id, sandboxId);
+    return { computerId: computer.publicId };
+  } catch (error) {
+    await replacing;
+    throw error;
+  }
+}
+// What a new computer with no agent gets before it pauses: current helpers, the member's screen, and the default
+// profile's latest capture. A failure leaves it for the next open to retry, like an apply that fails on computer_open.
+async function applyNewComputer(
+  db: Database,
+  { provider }: InOrganization,
+  member: Member,
+  computer: Pick<ComputerRow, 'id' | 'publicId' | 'revision'>,
+  sandboxId: string,
+) {
+  try {
+    const deadline = Date.now() + SYNC_DEADLINE_MS;
+    const session = await provider.connect(sandboxId, CALL_HOLD_MS);
+    await refreshComputer(db, provider, computer, session);
+    const profiles = await listProfiles(db, member);
+    await Promise.all([
+      chosenScreen(db, member).then(screen => applyScreen(session, screen)),
+      applyProfiles(db, member, computer, session, profiles[0] ?? null, profiles, deadline),
+    ]);
+  } catch (error) {
+    logError('new computer apply', error);
+  }
+}
+// Pauses a computer that nothing holds, as a close does: live view a member started meanwhile keeps it running.
+const pauseIdle = (
+  db: Database,
+  { provider, account }: InOrganization,
+  member: Member,
+  computerId: number,
+  sandboxId: string,
+) =>
+  db.transaction(async tx => {
+    const [computer] = await tx
+      .select(computerColumns)
+      .from(schema.computers)
+      .where(eq(schema.computers.id, computerId))
+      .for('update');
+    if (!computer) return;
+    const now = new Date();
+    await pauseComputer(
+      tx,
+      account,
+      computer.id,
+      member,
+      pauseAt(computer, await liveSession(tx, computer.id), now),
+      now,
+      pauseByProvider(provider, sandboxId),
+    );
+  });
 
 // --- Profiles ---
 // Each profile (captures.ts, Profiles) has a Chrome profile of its own on every computer of the member's it was used on
 // (computer_profiles): the computer's first gets FIRST_PROFILE, the directory Chrome already ran, so a computer only one
 // browser syncs to never restarts Chrome for it, and each later one a directory named by its browser's public ID, which
-// no other browser ever gets. A computer runs one profile at a time, its session's; a fork starts with main's profiles
-// as its snapshot had them. A browser that stops syncing keeps its row: the next open on each computer signs its
-// profile out of the sites it synced (applyProfiles), and its directory stays its own.
+// no other browser ever gets. A computer runs one profile at a time, its session's; a new computer starts with none. A
+// browser that stops syncing keeps its row: the next open on each computer signs its profile out of the sites it synced
+// (applyProfiles), and its directory stays its own.
 
 // The profile a new session on the computer uses: the one named, else the one the computer's last session used while
-// it is still a profile, so a fork reopens as it was left, else the default, the profile synced last; null with none.
+// it is still a profile, so a computer reopens as it was left, else the default, the profile synced last; null with none.
 async function pickProfile(tx: Pick<Database, 'select'>, computerId: number, { named, profiles }: ProfileChoice) {
   if (named) return named;
   const [last] = await tx
@@ -1875,42 +1773,13 @@ async function refreshComputer(
   }
 }
 
-// The screen size the member chose for their computers.
+// The screen size the member's new computers start at.
 async function chosenScreen(db: Database, member: Member) {
   const [row] = await db
     .select({ screen: schema.memberships.computerScreen })
     .from(schema.memberships)
     .where(eq(schema.memberships.id, member.membershipId));
   return row?.screen ?? DEFAULT_SCREEN;
-}
-
-// The member's screen choice on their main computer, switched only when it changed since the last switch
-// (computers.screen). A desktop too small to switch is marked and never tried again; a failure is retried at the next
-// wake. Returns whether the computer runs the choice, `fixed` for a desktop too small.
-async function applyMainScreen(db: Database, computerId: number, session: ComputerSession, now: Date) {
-  const [row] = await db
-    .select({
-      chosen: schema.memberships.computerScreen,
-      screen: schema.computers.screen,
-      fixedAt: schema.computers.screenFixedAt,
-    })
-    .from(schema.computers)
-    .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
-    .where(eq(schema.computers.id, computerId));
-  if (!row) return false;
-  if (row.fixedAt) return 'fixed';
-  if (row.chosen === (row.screen ?? DEFAULT_SCREEN)) return true;
-  try {
-    const set = await session.setScreen(row.chosen);
-    await db
-      .update(schema.computers)
-      .set(set ? { screen: row.chosen } : { screenFixedAt: now })
-      .where(eq(schema.computers.id, computerId));
-    return set || 'fixed';
-  } catch (error) {
-    logError('main screen', error);
-    return false;
-  }
 }
 
 // Whether the computer now runs `screen`. A failure leaves the computer at its own screen, which screenshots show
@@ -2052,7 +1921,6 @@ type LiveViewComputer = Pick<
   ComputerRow,
   | 'id'
   | 'publicId'
-  | 'forkOf'
   | 'status'
   | 'sandboxId'
   | 'runsUntil'
@@ -2065,7 +1933,6 @@ type LiveViewComputer = Pick<
 const liveViewColumns = {
   id: schema.computers.id,
   publicId: schema.computers.publicId,
-  forkOf: schema.computers.forkOf,
   status: schema.computers.status,
   sandboxId: schema.computers.sandboxId,
   runsUntil: schema.computers.runsUntil,
@@ -2075,10 +1942,9 @@ const liveViewColumns = {
   takenOverAt: schema.computers.takenOverAt,
   takeoverUntil: schema.computers.takeoverUntil,
 };
-// Which of the member's computers live view acts on: main, or one of their forks by its ID.
-export type LiveViewTarget = { computerId?: string | undefined };
-const targetOf = (member: Member, { computerId }: LiveViewTarget) =>
-  computerId ? forkOfMember(member, computerId) : mainOf(member);
+// Which of the member's computers live view acts on, by its ID.
+export type LiveViewTarget = { computerId: string };
+const targetOf = (member: Member, { computerId }: LiveViewTarget) => memberComputer(member, computerId);
 const readyTarget = (member: Member, target: LiveViewTarget) =>
   and(targetOf(member, target), eq(schema.computers.status, 'ready'));
 // The member's ready computer, locked, with a lapsed takeover ended; null without one.
@@ -2126,7 +1992,7 @@ export async function liveViewStatus(
   member: Member,
   lease: string,
   now = new Date(),
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<LiveViewStatus> {
   const [[computer], refusal] = await Promise.all([
     db.select(liveViewColumns).from(schema.computers).where(targetOf(member, target)),
@@ -2188,7 +2054,7 @@ export async function liveViewHeartbeat(
   member: Member,
   { id: lease, state }: { id: string; state: 'visible' | 'hidden' | 'released' },
   now = new Date(),
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<LiveViewStatus> {
   if (!LEASE_PATTERN.test(lease)) throw new Error('invalid live view lease');
   const computers = await inOrganization(deployment, db, member.organizationId);
@@ -2262,27 +2128,15 @@ async function extendHolds(
   target: LiveViewTarget,
 ) {
   const { provider, metering, account } = computers;
-  const deadline = Date.now() + SYNC_DEADLINE_MS;
-  const ready = () => db.select(liveViewColumns).from(schema.computers).where(readyTarget(member, target));
-  let [current] = await ready();
-  // Watching creates the main computer when there is none, as a takeover does; later beats see `starting` meanwhile.
-  let created = false;
-  if (!current?.sandboxId) {
-    if (target.computerId) return;
-    if (await creditFailure(metering, db, member)) return;
-    const row = await ensureComputer(db, computers, member);
-    if ('error' in row) return;
-    [current] = await ready();
-    if (!current?.sandboxId) return;
-    created = true;
-  }
+  const [current] = await db.select(liveViewColumns).from(schema.computers).where(readyTarget(member, target));
+  if (!current?.sandboxId) return;
   const extend = !!extendedHolds(current, lease, now) && !(await creditFailure(metering, db, member));
   if (!extend && !lapsed(current, now)) return;
-  const woken = await db.transaction(async tx => {
+  await db.transaction(async tx => {
     // Also ends a lapsed takeover.
     const computer = await lockLiveView(tx, member, now, target);
     const next = extend && computer && extendedHolds(computer, lease, now);
-    if (!computer || !next) return null;
+    if (!computer || !next) return;
     await tx
       .update(schema.computers)
       .set({
@@ -2294,32 +2148,18 @@ async function extendHolds(
     const pause = pauseAt({ ...computer, ...next }, live, now);
     // A running computer already due to run past the new deadline was already asked to run that long. Metered first,
     // like a call: a failed wake still counts as running, and the page's next beats show the computer paused.
-    if (running(computer, now) && computer.runsUntil! >= pause && !created) return null;
+    if (running(computer, now) && computer.runsUntil! >= pause) return;
     await meter(tx, account, computer.id, member, pause);
-    const session = await provider
+    await provider
       .connect(computer.sandboxId!, Math.max(1, pause.getTime() - Date.now()))
       .catch(error => logError('live view wake', error));
-    // A computer this created has had no computer session, so it gets the latest capture as a new one would on
-    // computer_open; watching an existing computer applies nothing.
-    // Any wake switches main to the member's screen choice, which changed while it was paused.
-    const working = !!live || liveCalls(computer.callsInFlight, now).length > 0;
-    return session ? { session, row: computer, fresh: created && !working } : null;
   });
-  if (!woken) return;
-  try {
-    await Promise.all([
-      !woken.row.forkOf && applyMainScreen(db, woken.row.id, woken.session, now),
-      woken.fresh && applyForLiveView(db, member, woken.row, woken.session, deadline),
-    ]);
-  } catch (error) {
-    logError('live view apply', error);
-  }
 }
 
 // The user takes control through live view, for this lease. An agent working, with a live computer session
 // (even past its idle minute) or a call in flight (a computer_close ends its session before it applies and closes
 // tabs), is suspended or left to finish, and nothing is applied under it; with none, this is a session boundary like
-// computer_open: it creates or wakes the computer and applies pending captures first, but does not mark the user set
+// computer_open: it wakes the computer and applies pending captures first, but does not mark the user set
 // up. A takeover another of the user's pages holds moves to this one. Charged ahead to its lapse deadline. A computer
 // that accepts public traffic is refused (needs_reset), since live view could not reach it privately.
 export async function takeOverComputer(
@@ -2327,7 +2167,7 @@ export async function takeOverComputer(
   deployment: Computers,
   member: Member,
   lease: string,
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<LiveViewStatus | ComputerFailure> {
   if (!LEASE_PATTERN.test(lease)) throw new Error('invalid live view lease');
   const computers = await inOrganization(deployment, db, member.organizationId);
@@ -2335,18 +2175,20 @@ export async function takeOverComputer(
   const deadline = Date.now() + SYNC_DEADLINE_MS;
   const exhausted = await creditFailure(metering, db, member);
   if (exhausted) return exhausted;
-  // A fork is never created here: only the main computer, on first use.
-  const row = target.computerId
-    ? ((await db.select(computerColumns).from(schema.computers).where(readyTarget(member, target)))[0] ?? forkNotFound)
-    : await ensureComputer(db, computers, member);
-  if ('error' in row) return row;
+  const [row] = await db
+    .select(computerColumns)
+    .from(schema.computers)
+    .where(memberComputer(member, target.computerId));
+  if (!row) return computerNotFound;
+  if (row.status !== 'ready' || !row.sandboxId)
+    return { error: 'starting', message: 'This computer is still being created. Try again in a few seconds.' };
   let started: { session: ComputerSession; apply: boolean } | ComputerFailure;
   try {
     started = await db.transaction(
       async (tx): Promise<{ session: ComputerSession; apply: boolean } | ComputerFailure> => {
         const now = new Date();
         const computer = await lockLiveView(tx, member, now, target);
-        if (!computer || computer.id !== row.id) return resetting;
+        if (!computer || computer.id !== row.id) return computerNotFound;
         let live = await liveSession(tx, computer.id);
         if (live && expired(live, now)) {
           await endSession(tx, live.id, 'idle', now);
@@ -2404,26 +2246,25 @@ class PublicComputer extends Error {}
 const needsReset: ComputerFailure = {
   error: 'needs_reset',
   message:
-    'Your computer was made before live view and can only be watched once it is reset. Reset it on your account page: that deletes sign-ins and files made on it.',
+    'This computer was made before live view and cannot be watched. Delete it and make a new one on the Computer page.',
 };
 
 // Ends this lease's takeover, keeping its watch, and resumes the suspended computer session with no apply; its
 // next result says the user had control. The computer pauses once nothing else keeps it running. A takeover another
-// lease holds is left alone. The end of a takeover of the main computer takes its new snapshot, so the next fork has
-// what the member signed in to; a failure leaves it due, for the next fork to retry.
+// lease holds is left alone.
 export async function handBackComputer(
   db: Database,
   deployment: Computers,
   member: Member,
   lease: string,
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<LiveViewStatus> {
   if (!LEASE_PATTERN.test(lease)) throw new Error('invalid live view lease');
   const computers = await inOrganization(deployment, db, member.organizationId);
   const now = new Date();
-  const main = await db.transaction(async tx => {
+  await db.transaction(async tx => {
     const computer = await lockLiveView(tx, member, now, target);
-    if (!computer || !mine(computer, lease, now)) return null;
+    if (!computer || !mine(computer, lease, now)) return;
     const ended = await endTakeover(tx, computer, now);
     await shortenHolds(
       tx,
@@ -2433,9 +2274,7 @@ export async function handBackComputer(
       { liveViewWatches: ended.liveViewWatches, takeoverUntil: null },
       now,
     );
-    return computer.forkOf === null ? computer.id : null;
   });
-  if (main) await latestSnapshot(db, computers, member, main).catch(error => logError('computer snapshot', error));
   return liveViewStatus(db, computers.metering, member, lease, now, target);
 }
 
@@ -2446,7 +2285,7 @@ export async function liveViewAccess(
   member: Member,
   lease: string,
   now = new Date(),
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<'control' | 'view' | 'none'> {
   if (!LEASE_PATTERN.test(lease)) return 'none';
   const [computer] = await db
@@ -2470,7 +2309,7 @@ export async function connectLiveView(
   providers: Providers,
   member: Member,
   lease: string,
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<ComputerSession | 'not_found' | 'not_watching' | 'needs_reset'> {
   if (!LEASE_PATTERN.test(lease)) return 'not_watching';
   const { provider } = await providerFor(providers, db, member.organizationId);
@@ -2503,7 +2342,7 @@ export async function setLiveViewClipboard(
   member: Member,
   lease: string,
   content: ClipboardContent,
-  target: LiveViewTarget = {},
+  target: LiveViewTarget,
 ): Promise<'set' | 'not_in_control' | 'too_large' | 'not_png'> {
   if (typeof content === 'string') {
     if (Buffer.byteLength(content, 'utf8') > MAX_CLIPBOARD_BYTES) return 'too_large';
@@ -2525,27 +2364,13 @@ export async function setLiveViewClipboard(
 
 export async function computerView(
   db: Database,
-  { metering, accounts }: Pick<Computers, 'metering' | 'accounts'>,
+  deployment: Pick<Computers, 'provider' | 'metering' | 'accounts' | 'limits'>,
   member: Member,
 ) {
+  const { metering, accounts } = deployment;
   const now = new Date();
   const period = await metering.period(db, member, now);
-  const [[row], [membership], capture, usage, own, [ran], [calls]] = await Promise.all([
-    db
-      .select({
-        id: schema.computers.id,
-        status: schema.computers.status,
-        size: schema.computers.size,
-        screenFixedAt: schema.computers.screenFixedAt,
-        // When main last applied any of its profiles' captures.
-        appliedCaptureAt:
-          sql<Date | null>`(select max(${schema.computerProfiles.appliedCaptureAt}) from ${schema.computerProfiles} where ${schema.computerProfiles.computerId} = ${schema.computers.id})`.mapWith(
-            schema.computerProfiles.appliedCaptureAt,
-          ),
-        takeoverUntil: schema.computers.takeoverUntil,
-      })
-      .from(schema.computers)
-      .where(mainOf(member)),
+  const [[membership], capture, usage, own, [ran], [calls]] = await Promise.all([
     db
       .select({ computerSize: schema.memberships.computerSize, computerScreen: schema.memberships.computerScreen })
       .from(schema.memberships)
@@ -2574,26 +2399,28 @@ export async function computerView(
         ),
       ),
   ]);
-  // Agents work in forks: busy while one of them holds a fork. Live view lists the forks that are not paused, and the
-  // pinned ones, paused or not.
-  const forks = row ? (await listForks(db, member, now)).filter(fork => fork.pinned || fork.status !== 'paused') : [];
-  const live = row
-    ? await db
-        .select({ lastCallAt: schema.computerSessions.lastCallAt, suspendedAt: schema.computerSessions.suspendedAt })
-        .from(schema.computerSessions)
-        .innerJoin(schema.computers, eq(schema.computers.id, schema.computerSessions.computerId))
-        .where(and(eq(schema.computers.forkOf, row.id), isNull(schema.computerSessions.endedAt)))
-    : [];
+  // After the trim, which listing runs, so the cap and next replacement describe what the member has.
+  const listed = await listComputers(db, deployment, member, now);
+  const limit = await capOf(db, deployment, member.organizationId);
+  const rows = await db
+    .select(capColumns)
+    .from(schema.computers)
+    .where(eq(schema.computers.membershipId, member.membershipId));
+  const replacement =
+    listed.length === limit && limit > 0
+      ? replacementOrder(rows, await liveControl(db, rows), now).find(row => row.replaceable)
+      : undefined;
+  const replaces = replacement ? (listed.find(row => row.computerId === replacement.publicId) ?? null) : null;
   return {
     capture,
-    // The size the member chose, which the main computer runs at once it is created.
+    // The size the member's new computers start at (it changes only new ones).
     size: membership?.computerSize ?? '1x',
-    // The screen size the member chose for their computers.
+    // The screen size the member's new computers start at (it changes only new ones).
     screen: membership?.computerScreen ?? DEFAULT_SCREEN,
     // Where the member's computers run.
     account: accountOf(!!own),
-    // The billing period, with the running time of the member's computers in it, forks included, rounded up to the
-    // minute, and their MCP calls.
+    // The billing period, with the running time of the member's computers in it, rounded up to the minute, and their
+    // MCP calls.
     period: {
       start: period.start.toISOString(),
       end: period.end.toISOString(),
@@ -2610,93 +2437,48 @@ export async function computerView(
       hardStop: usage.hardStop,
       ...(usage.estimate !== undefined && { estimate: usage.estimate }),
     },
-    computer: row
-      ? {
-          status: row.status,
-          size: row.size,
-          // From before screen sizes: it keeps its own screen until reset.
-          screenFixed: !!row.screenFixedAt,
-          appliedCaptureAt: row.appliedCaptureAt?.toISOString() ?? null,
-          busy: live.some(session => holdsControl(session, now)),
-          // The user holds a takeover of the main computer in live view.
-          inLiveView: takenOver(row, now),
-        }
-      : null,
-    forks,
+    computers: listed,
+    // How many the member may have (the deployment's limit, else DEFAULT_MAX_COMPUTERS).
+    limit,
+    // The computer a new one would replace, at the cap: the least recently used replaceable one, or null with none.
+    replaces,
   };
 }
 
-// Chooses the size of the member's main computer. A computer keeps its size, so a main computer of another size is
-// reset (deleteMainComputer) and the next computer_open creates one at the new size. Returns whether it reset one.
-export async function setComputerSize(db: Database, providers: Providers, member: Member, size: ComputerSize) {
+// The size the member's new computers start at. Changing it resets nothing.
+export async function setComputerSize(db: Database, member: Member, size: ComputerSize) {
   await db
     .update(schema.memberships)
     .set({ computerSize: size, updatedAt: new Date() })
     .where(eq(schema.memberships.id, member.membershipId));
-  const [main] = await db.select({ size: schema.computers.size }).from(schema.computers).where(mainOf(member));
-  return !!main && main.size !== size && (await deleteMainComputer(db, providers, member));
 }
 
-// Chooses the screen size of the member's computers. A running main computer switches now, a paused one when it next
-// wakes for live view, and each new fork starts at it. `fixed`: the main computer is from before screen sizes and keeps
-// its own until reset; `saved`: it switches later, or there is none yet.
-export async function setComputerScreen(db: Database, providers: Providers, member: Member, screen: ScreenSize) {
+// The screen size the member's new computers start at. Changing it resets nothing.
+export async function setComputerScreen(db: Database, member: Member, screen: ScreenSize) {
   await db
     .update(schema.memberships)
     .set({ computerScreen: screen, updatedAt: new Date() })
     .where(eq(schema.memberships.id, member.membershipId));
-  const { provider } = await providerFor(providers, db, member.organizationId);
-  const now = new Date();
-  const main = await db.transaction(async tx => {
-    const computer = await lockLiveView(tx, member, now, {});
-    if (!computer) return null;
-    if (!running(computer, now)) return { id: computer.id, session: null };
-    const until = pauseAt(computer, await liveSession(tx, computer.id), now);
-    const timeoutMs = Math.max(1, until.getTime() - Date.now());
-    return { id: computer.id, session: await provider.connect(computer.sandboxId!, timeoutMs) };
-  });
-  if (!main) return 'saved';
-  if (main.session) {
-    const applied = await applyMainScreen(db, main.id, main.session, now);
-    return applied === true ? 'switched' : applied || 'saved';
-  }
-  const [row] = await db
-    .select({ fixedAt: schema.computers.screenFixedAt })
+}
+
+// Deletes all of the member's computers (their provider computers, then their rows), keeping synced data and setup. In
+// use or not: an agent working on one finds its computer gone. Returns how many were deleted.
+export async function deleteAllComputers(db: Database, providers: Providers, member: Member) {
+  const computers = await db
+    .select({ id: schema.computers.id, publicId: schema.computers.publicId, sandboxId: schema.computers.sandboxId })
     .from(schema.computers)
-    .where(eq(schema.computers.id, main.id));
-  return row?.fixedAt ? 'fixed' : 'saved';
+    .where(eq(schema.computers.membershipId, member.membershipId));
+  if (!computers.length) return 0;
+  // Every provider computer before forgetting the rows, so a failure can be retried; their sessions go with them.
+  await destroyProviderComputers((await providerFor(providers, db, member.organizationId)).provider, computers);
+  await forgetComputers(db, computers);
+  return computers.length;
 }
 
-// Also resets the computer: deletes the main computer, its forks, and their snapshots, so the next computer_open creates
-// a fresh main from the current template and applies the latest capture wholesale. Returns whether there was one.
-export async function deleteMainComputer(db: Database, providers: Providers, member: Member) {
-  const [main] = await db.select({ id: schema.computers.id }).from(schema.computers).where(mainOf(member));
-  if (!main) return false;
-  const [computers, snapshots] = await Promise.all([
-    db
-      .select({ publicId: schema.computers.publicId, sandboxId: schema.computers.sandboxId })
-      .from(schema.computers)
-      .where(or(eq(schema.computers.id, main.id), eq(schema.computers.forkOf, main.id))),
-    db
-      .select({ id: schema.computerSnapshots.providerSnapshotId })
-      .from(schema.computerSnapshots)
-      .where(eq(schema.computerSnapshots.computerId, main.id)),
-  ]);
-  // Every provider computer before forgetting the rows; its forks, snapshots, and computer sessions go with it (cascade).
-  await destroyProviderComputers(
-    (await providerFor(providers, db, member.organizationId)).provider,
-    computers,
-    snapshots.map(snapshot => snapshot.id),
-  );
-  await db.delete(schema.computers).where(eq(schema.computers.id, main.id));
-  return true;
-}
-
-// Deletes every computer of the organization's members, main computers and forks, with their snapshots, as when its
-// computers move to another provider account, where they can't follow: each main computer starts again on its next
-// open. `change` runs in the transaction that forgets the rows, such as to switch the account; the provider computers
-// go after, on `provider`, the account they ran on. A create in flight finds no row to record its computer in and kills
-// it (ensureComputer and provisionFork).
+// Deletes every computer of the organization's members, as when its computers move to another provider account, where
+// they can't follow: each member's computers start again on their next open. `change` runs in the transaction that
+// forgets the rows, such as to switch the account; the provider computers go after, on `provider`, the account they
+// ran on. A create in flight finds no row to record its computer in and kills it (provisionComputer).
 export async function resetOrganizationComputers(
   db: Database,
   provider: ComputerProvider,
@@ -2710,25 +2492,10 @@ export async function resetOrganizationComputers(
       .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
       .where(eq(schema.memberships.organizationId, organizationId))
       .for('update', { of: schema.computers });
-    const ids = computers.map(computer => computer.id);
-    const snapshots = ids.length
-      ? await tx
-          .select({ id: schema.computerSnapshots.providerSnapshotId })
-          .from(schema.computerSnapshots)
-          .where(inArray(schema.computerSnapshots.computerId, ids))
-      : [];
-    // Forks first, then the main computers they were made from.
-    if (ids.length) {
-      await tx
-        .delete(schema.computers)
-        .where(and(inArray(schema.computers.id, ids), isNotNull(schema.computers.forkOf)));
-      await tx.delete(schema.computers).where(inArray(schema.computers.id, ids));
-    }
+    await forgetComputers(tx, computers);
     await change(tx);
-    return { computers, snapshots: snapshots.map(snapshot => snapshot.id) };
+    return computers;
   });
   // The rows are gone, so a failure (such as an account that now refuses its key) leaves only provider computers.
-  await destroyProviderComputers(provider, gone.computers, gone.snapshots).catch(error =>
-    logError('organization computers reset', error),
-  );
+  await destroyProviderComputers(provider, gone).catch(error => logError('organization computers reset', error));
 }

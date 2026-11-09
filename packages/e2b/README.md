@@ -14,7 +14,7 @@ E2B_API_KEY=... bun run --cwd packages/e2b build-template
 
 Set `E2B_COMPUTER_TEMPLATE` to build and use another name.
 
-E2B fixes a computer's CPUs and memory when its template is built, so there is one template per size (`COMPUTER_SIZES` in `@clutchbox/computer`): 2 vCPU · 4 GB uses the bare name, and 4 vCPU · 8 GB adds `-2x`, after its size key. The build makes both, and a fork runs at the size of the computer it was snapshotted from.
+E2B fixes a computer's CPUs and memory when its template is built, so there is one template per size (`COMPUTER_SIZES` in `@clutchbox/computer`): 2 vCPU · 4 GB uses the bare name, and 4 vCPU · 8 GB adds `-2x`, after its size key. The build makes both.
 
 ## Use it
 

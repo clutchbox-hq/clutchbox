@@ -5,7 +5,7 @@ import { LIVE_VIEW_TICKET_MS } from './computer-timing.ts';
 
 // A live-view ticket: how the page opens the relay where its session cookie can't go, at the API's own origin
 // (config.ts, apiOrigin), since the cookie is set only for the web app's host. The API signs one for the signed-in
-// person's session and this page load's lease (and fork), and the relay route accepts it until it expires. It names the
+// person's session, this page load's lease, and the computer it is on, and the relay route accepts it until it expires. It names the
 // session by ID, never its token, so the relay re-checks the session (sessionHolds) but the ticket can't stand in for
 // it. Not single-use: within LIVE_VIEW_TICKET_MS it opens only the same page load's relay again, which the lease's watch
 // governs as before.
@@ -17,7 +17,7 @@ const payloadSchema = z
     userId: z.string(),
     sessionId: z.string(),
     lease: z.string(),
-    computerId: z.string().optional(),
+    computerId: z.string(),
     exp: z.number(),
   })
   .strict();

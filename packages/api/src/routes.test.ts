@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { builtInVerifiedServers } from '@clutchbox/capture';
 import { databaseSchema } from '@clutchbox/server/database-schema';
 import { PGlite } from '@electric-sql/pglite';
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,11 +14,17 @@ import { bundle, cookie, siteBundle } from '../../server/src/capture-fixtures.ts
 import { adoptSyncSettings, captureView, syncView } from '../../server/src/captures.ts';
 import { LIVE_VIEW_TICKET_MS } from '../../server/src/computer-timing.ts';
 import type { ComputerProvider } from '../../server/src/computers.ts';
-import { MAX_CLIPBOARD_IMAGE_BYTES, openComputerSession, useComputerSession } from '../../server/src/computers.ts';
+import {
+  createPausedComputer,
+  MAX_CLIPBOARD_IMAGE_BYTES,
+  openComputerSession,
+  useComputerSession,
+} from '../../server/src/computers.ts';
 import type { ServerConfig } from '../../server/src/config.ts';
 import type { Database } from '../../server/src/database.ts';
 import { fakeComputerProvider } from '../../server/src/fake-computer-provider.ts';
 import { type MeteringRefusal, noLimits, noMetering, noOperatorAdmin } from '../../server/src/hooks.ts';
+import { newPublicId } from '../../server/src/ids.ts';
 import { inTheOrganization, membership } from '../../server/src/member-fixtures.ts';
 import { createOrganization, currentMember } from '../../server/src/organizations.ts';
 import * as schema from '../../server/src/schema.ts';
@@ -53,6 +59,19 @@ async function identity(id: string) {
   const signature = createHmac('sha256', config.BETTER_AUTH_SECRET).update(token).digest('base64');
   return `${(await auth.$context).authCookies.sessionToken.name}=${encodeURIComponent(`${token}.${signature}`)}`;
 }
+// A computer session for the person, as an agent's computer_open makes.
+const openAs = async (userId: string) =>
+  openComputerSession(
+    db,
+    { provider: fake.provider, metering: noMetering },
+    { ...(await member(userId)), clientId: 'agent-client' },
+  );
+// A paused computer of the person's, with no agent; its ID.
+const newComputer = async (userId: string) => {
+  const made = await createPausedComputer(db, { provider: fake.provider, metering: noMetering }, await member(userId));
+  if ('error' in made) throw new Error(made.error);
+  return made.computerId;
+};
 function client(
   computers: ComputerProvider = fake.provider,
   options: Omit<Parameters<typeof createApi>[0], 'db' | 'auth' | 'origin' | 'computers'> = {},
@@ -127,11 +146,11 @@ describe('API routes', () => {
       ['PUT', '/time-zone'],
       ['GET', '/computer'],
       ['DELETE', '/computer'],
-      ['POST', '/computer/reset'],
+      ['POST', '/computer/computers'],
+      ['DELETE', '/computer/computers'],
+      ['DELETE', '/computer/computers/cmp_x'],
       ['PUT', '/computer/size'],
       ['PUT', '/computer/screen'],
-      ['PUT', '/computer/forks/computer_x/pin'],
-      ['DELETE', '/computer/forks/computer_x/pin'],
       ['POST', '/computer/takeover'],
       ['POST', '/computer/hand-back'],
       ['POST', '/computer/clipboard'],
@@ -290,13 +309,9 @@ describe('API routes', () => {
     ).toEqual([mb.membershipId]);
     expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
       capture: null,
-      computer: null,
+      computers: [],
     });
-    // The main computer and its fork, then the fork's snapshot.
-    expect({ kill: fake.calls.kill, deleteSnapshot: fake.calls.deleteSnapshot }).toEqual({
-      kill: 2,
-      deleteSnapshot: 1,
-    });
+    expect(fake.calls.kill).toBe(1);
     expect((await (await request('GET', '/computer', { cookie: b })).json()).capture).toMatchObject({ cookieCount: 1 });
     // A browser connected since uploads only with `connect`, the first upload after Connect.
     const reconnected = await browser(a);
@@ -483,11 +498,11 @@ describe('API routes', () => {
     expect((await (await request('GET', '/setup', { cookie: b })).json()).setUpAt).toBeNull();
   });
 
-  it('Reset computer replaces only the computer, keeping synced data, setup, and other users', async () => {
+  it('Delete all computers deletes only the computers, keeping synced data, setup, and other users', async () => {
     const request = client();
     const a = await identity('a');
     const b = await identity('b');
-    expect((await request('POST', '/computer/reset', { cookie: a })).status).toBe(404);
+    expect(await (await request('DELETE', '/computer/computers', { cookie: a })).json()).toEqual({ deleted: 0 });
     for (const user of [a, b])
       expect(
         (await request('POST', '/captures', { token: await browser(user), body: { capture: bundle([cookie()]) } }))
@@ -495,35 +510,22 @@ describe('API routes', () => {
       ).toBe(200);
     for (const userId of ['a', 'b']) {
       await recordSetupStep(db, await member(userId), 'setUp');
-      await openComputerSession(
-        db,
-        { provider: fake.provider, metering: noMetering },
-        { ...(await member(userId)), clientId: 'agent-client' },
-      );
+      await openAs(userId);
     }
-    const reset = await request('POST', '/computer/reset', { cookie: a });
-    expect(reset.status).toBe(200);
-    expect(await reset.json()).toEqual({ reset: true });
-    // The main computer and the agent's fork.
-    expect(fake.calls.kill).toBe(2);
-    // The agent's session ends with its fork; the next open creates a fresh main computer.
+    const deleted = await request('DELETE', '/computer/computers', { cookie: a });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ deleted: 1 });
+    expect(fake.calls.kill).toBe(1);
+    // The agent's session goes with it.
     expect(await db.select().from(schema.computerSessions)).toHaveLength(1);
     expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
       capture: { cookieCount: 1 },
-      computer: null,
+      computers: [],
     });
     expect((await (await request('GET', '/setup', { cookie: a })).json()).setUpAt).toEqual(expect.any(String));
-    expect((await (await request('GET', '/computer', { cookie: b })).json()).computer).toMatchObject({
-      status: 'ready',
-    });
+    expect((await (await request('GET', '/computer', { cookie: b })).json()).computers).toHaveLength(1);
     const created = fake.calls.create;
-    expect(
-      await openComputerSession(
-        db,
-        { provider: fake.provider, metering: noMetering },
-        { ...(await member('a')), clientId: 'agent-client' },
-      ),
-    ).toHaveProperty('sessionId');
+    expect(await openAs('a')).toHaveProperty('sessionId');
     expect(fake.calls.create).toBe(created + 1);
     // A provider failure keeps the computer recorded, so a retry kills it.
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -533,60 +535,100 @@ describe('API routes', () => {
         throw new Error('provider down');
       },
     });
-    expect((await failing('POST', '/computer/reset', { cookie: b })).status).toBe(503);
-    expect((await (await request('GET', '/computer', { cookie: b })).json()).computer).not.toBeNull();
+    expect((await failing('DELETE', '/computer/computers', { cookie: b })).status).toBe(503);
+    expect((await (await request('GET', '/computer', { cookie: b })).json()).computers).toHaveLength(1);
   });
 
-  it('Computer size chooses the main computer size, resetting one of another size, for the caller only', async () => {
+  it('New computer makes a paused computer with no agent, confirming what it replaces at the limit', async () => {
+    const limited = new Map<string, number>();
+    const request = client(fake.provider, {
+      hooks: {
+        metering: noMetering,
+        operatorAdmin: noOperatorAdmin,
+        limits: { ...noLimits, computers: async (_, id) => limited.get(id) ?? null },
+      },
+    });
+    const a = await identity('a');
+    await identity('b');
+    limited.set((await member('a')).organizationId, 1);
+    const view = async () => (await request('GET', '/computer', { cookie: a })).json();
+    const make = (body?: unknown) => request('POST', '/computer/computers', { cookie: a, body: body ?? {} });
+    for (const body of [{ replace: 'nope' }, { extra: true }])
+      expect((await make(body)).status, JSON.stringify(body)).toBe(400);
+    expect(await view()).toMatchObject({ computers: [], limit: 1, replaces: null });
+    const made = await make();
+    expect(made.status).toBe(201);
+    const { computerId: first } = await made.json();
+    expect(first).toMatch(/^cmp_/);
+    expect(await view()).toMatchObject({
+      computers: [{ computerId: first, status: 'paused', agent: null, label: null }],
+      limit: 1,
+      replaces: { computerId: first },
+    });
+    expect(await db.select().from(schema.computerSessions)).toEqual([]);
+    // At the limit the page must name the computer it replaces.
+    const unconfirmed = await make();
+    expect(unconfirmed.status).toBe(409);
+    expect(await unconfirmed.json()).toMatchObject({ error: 'confirm_replace' });
+    expect(fake.calls.kill).toBe(0);
+    const second = await make({ replace: first });
+    expect(second.status).toBe(201);
+    expect(fake.calls.kill).toBe(1);
+    const { computerId: replacing } = await second.json();
+    expect((await view()).computers.map((row: { computerId: string }) => row.computerId)).toEqual([replacing]);
+    // With every computer in use, there is nothing to replace.
+    await request('POST', '/computer/takeover', { cookie: a, body: { lease: randomUUID(), computer: replacing } });
+    expect((await view()).replaces).toBeNull();
+    expect((await make({ replace: replacing })).status).toBe(409);
+    expect(fake.calls.kill).toBe(1);
+  });
+
+  it("deletes one of the member's computers from the page, refusing a computer in use or another member's", async () => {
+    const request = client();
+    const a = await identity('a');
+    const b = await identity('b');
+    const opened = await openAs('a');
+    if ('error' in opened) throw new Error(opened.error);
+    const del = (cookie: string, id: string) => request('DELETE', `/computer/computers/${id}`, { cookie });
+    // A malformed ID, someone else's, or none of that ID.
+    expect((await del(a, 'nope')).status).toBe(404);
+    expect((await del(b, opened.computer.id)).status).toBe(404);
+    expect((await del(a, newPublicId('computer'))).status).toBe(404);
+    // An agent is using it.
+    const busy = await del(a, opened.computer.id);
+    expect(busy.status).toBe(409);
+    expect(await busy.json()).toMatchObject({ error: 'busy', busyUntil: expect.any(String) });
+    await db.update(schema.computerSessions).set({ lastCallAt: new Date(Date.now() - 61_000) });
+    const deleted = await del(a, opened.computer.id);
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ deleted: true });
+    expect(fake.calls.kill).toBe(1);
+    expect((await (await request('GET', '/computer', { cookie: a })).json()).computers).toEqual([]);
+  });
+
+  it('Computer size sets what new computers are made at, for the caller only, and resets nothing', async () => {
     const request = client();
     const a = await identity('a');
     const b = await identity('b');
     for (const body of [null, {}, { size: '3x' }, { size: '2x', member: 'other' }])
       expect((await request('PUT', '/computer/size', { cookie: a, body })).status).toBe(400);
-    // Before a computer exists, only the choice changes.
     const chosen = await request('PUT', '/computer/size', { cookie: a, body: { size: '2x' } });
     expect(chosen.status).toBe(200);
-    expect(await chosen.json()).toEqual({ size: '2x', reset: false });
-    for (const userId of ['a', 'b'])
-      await openComputerSession(
-        db,
-        { provider: fake.provider, metering: noMetering },
-        { ...(await member(userId)), clientId: 'agent-client' },
-      );
+    expect(await chosen.json()).toEqual({ size: '2x' });
+    await openAs('a');
+    await openAs('b');
     expect(fake.calls.sizes).toEqual(['2x', '1x']);
-    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
-      size: '2x',
-      computer: { size: '2x' },
-    });
-    // Another size resets the caller's computer and its fork, never another user's.
-    const changed = await request('PUT', '/computer/size', { cookie: a, body: { size: '1x' } });
-    expect(await changed.json()).toEqual({ size: '1x', reset: true });
-    expect(fake.calls.kill).toBe(2);
-    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
-      size: '1x',
-      computer: null,
-    });
-    expect(await (await request('GET', '/computer', { cookie: b })).json()).toMatchObject({
-      size: '1x',
-      computer: { status: 'ready', size: '1x' },
-    });
-    // A provider failure keeps the computer, and choosing the size again resets it.
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const failing = client({
-      ...fake.provider,
-      kill: async () => {
-        throw new Error('provider down');
-      },
-    });
-    expect((await failing('PUT', '/computer/size', { cookie: b, body: { size: '2x' } })).status).toBe(503);
-    expect((await (await request('GET', '/computer', { cookie: b })).json()).computer).not.toBeNull();
-    expect(await (await request('PUT', '/computer/size', { cookie: b, body: { size: '2x' } })).json()).toEqual({
-      size: '2x',
-      reset: true,
-    });
+    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({ size: '2x' });
+    expect(await (await request('GET', '/computer', { cookie: b })).json()).toMatchObject({ size: '1x' });
+    // Choosing another size never touches a computer.
+    await request('PUT', '/computer/size', { cookie: a, body: { size: '1x' } });
+    expect(fake.calls.kill).toBe(0);
+    expect((await (await request('GET', '/computer', { cookie: a })).json()).computers).toHaveLength(1);
+    await openAs('a');
+    expect(fake.calls.sizes).toEqual(['2x', '1x', '1x']);
   });
 
-  it("Screen size chooses the computers' screen, switching a running main computer without a reset, for the caller only", async () => {
+  it('Screen size sets what new computers start at, for the caller only, and resets nothing', async () => {
     const request = client();
     const a = await identity('a');
     const b = await identity('b');
@@ -594,152 +636,38 @@ describe('API routes', () => {
       (await request('PUT', '/computer/screen', { cookie, body: { screen } })).json();
     for (const body of [null, {}, { screen: '1024x768' }, { screen: '1440x900', member: 'other' }])
       expect((await request('PUT', '/computer/screen', { cookie: a, body })).status).toBe(400);
-    // Before a computer exists, only the choice changes.
-    expect(await choose('1280x1024')).toEqual({ screen: '1280x1024', result: 'saved' });
-    // New forks start at the member's choice; another member's at the default.
-    const forks = [];
-    for (const userId of ['a', 'b'])
-      forks.push(
-        await openComputerSession(
-          db,
-          { provider: fake.provider, metering: noMetering },
-          { ...(await member(userId)), clientId: 'agent-client' },
-        ),
-      );
-    const sandboxOf = async (where: ReturnType<typeof and>) => {
-      const [row] = await db.select({ sandboxId: schema.computers.sandboxId }).from(schema.computers).where(where);
-      return fake.sandboxes.get(row!.sandboxId!)!;
+    expect(await choose('1280x1024')).toEqual({ screen: '1280x1024' });
+    const screenOf = async (opened: Awaited<ReturnType<typeof openAs>>) => {
+      if ('error' in opened) throw new Error(opened.error);
+      const [row] = await db
+        .select({ sandboxId: schema.computers.sandboxId })
+        .from(schema.computers)
+        .where(eq(schema.computers.publicId, opened.computer.id));
+      return fake.sandboxes.get(row!.sandboxId!)!.screen;
     };
-    const forkScreens = await Promise.all(
-      forks.map(async opened => {
-        if ('error' in opened) throw new Error(opened.error);
-        return (await sandboxOf(eq(schema.computers.publicId, opened.computer.id))).screen;
-      }),
-    );
-    expect(forkScreens).toEqual([
-      { width: 1280, height: 1024 },
-      { width: 1440, height: 900 },
-    ]);
-    const mainOfA = and(
-      eq(schema.computers.membershipId, (await member('a')).membershipId),
-      isNull(schema.computers.forkOf),
-    );
-    const main = await sandboxOf(mainOfA);
-    // A paused main computer switches when it next wakes.
-    await db.update(schema.computers).set({ runsUntil: null }).where(mainOfA);
-    expect(await choose('1920x1200')).toEqual({ screen: '1920x1200', result: 'saved' });
-    expect(main.screen).toEqual({ width: 1440, height: 900 });
-    // A running one switches now, and only when the choice changed.
-    await db
-      .update(schema.computers)
-      .set({ runsUntil: new Date(Date.now() + 60_000) })
-      .where(mainOfA);
-    expect(await choose('1920x1200')).toEqual({ screen: '1920x1200', result: 'switched' });
-    expect(main.screen).toEqual({ width: 1920, height: 1200 });
-    const switches = fake.calls.screens.length;
-    expect(await choose('1920x1200')).toEqual({ screen: '1920x1200', result: 'switched' });
-    expect(fake.calls.screens).toHaveLength(switches);
-    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
-      screen: '1920x1200',
-      computer: { screenFixed: false },
-    });
+    const mine = await openAs('a');
+    expect(await screenOf(mine)).toEqual({ width: 1280, height: 1024 });
+    // Another member's start at the default.
+    expect(await screenOf(await openAs('b'))).toEqual({ width: 1440, height: 900 });
+    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({ screen: '1280x1024' });
     expect(await (await request('GET', '/computer', { cookie: b })).json()).toMatchObject({ screen: '1440x900' });
-    // A main computer from before screen sizes keeps its own until reset, and is not tried again.
-    Object.assign(main, { screen: { width: 1280, height: 800 }, desktop: { width: 1280, height: 800 } });
-    expect(await choose('1440x900')).toEqual({ screen: '1440x900', result: 'fixed' });
-    expect(await choose('1280x1024')).toEqual({ screen: '1280x1024', result: 'fixed' });
-    expect(fake.calls.screens).toHaveLength(switches + 1);
-    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({
-      computer: { screenFixed: true },
-    });
-    await db.update(schema.computers).set({ runsUntil: null }).where(mainOfA);
-    expect(await choose('1440x900')).toEqual({ screen: '1440x900', result: 'fixed' });
+    // Changing it leaves existing computers alone, and later ones get it.
+    const screens = fake.calls.screens.length;
+    await choose('1920x1200');
+    expect(fake.calls.screens).toHaveLength(screens);
+    expect(await screenOf(mine)).toEqual({ width: 1280, height: 1024 });
+    expect(await screenOf(await openAs('a'))).toEqual({ width: 1920, height: 1200 });
   });
 
-  it('report the computer, busy only while an agent holds one of its forks', async () => {
+  it('report each computer as in use only while an agent holds it', async () => {
     const a = await identity('a');
     const request = client();
-    expect(await (await request('GET', '/computer', { cookie: a })).json()).toMatchObject({ computer: null });
-    await openComputerSession(
-      db,
-      { provider: fake.provider, metering: noMetering },
-      { ...(await member('a')), clientId: 'agent-client' },
-    );
-    expect((await (await request('GET', '/computer', { cookie: a })).json()).computer).toMatchObject({
-      status: 'ready',
-      busy: true,
-    });
+    const shown = async () => (await (await request('GET', '/computer', { cookie: a })).json()).computers;
+    expect(await shown()).toEqual([]);
+    await openAs('a');
+    expect(await shown()).toMatchObject([{ status: 'in_use', agent: { host: 'agent-client' } }]);
     await db.update(schema.computerSessions).set({ lastCallAt: new Date(Date.now() - 61_000) });
-    expect((await (await request('GET', '/computer', { cookie: a })).json()).computer.busy).toBe(false);
-  });
-
-  it("Pin keeps one of the caller's forks by name, renames and unpins it, and refuses past the cap or for others", async () => {
-    const a = await identity('a');
-    const b = await identity('b');
-    const limited = new Set<string>();
-    const request = client(fake.provider, {
-      hooks: {
-        metering: noMetering,
-        operatorAdmin: noOperatorAdmin,
-        limits: { ...noLimits, pinnedForks: async (_, id) => (limited.has(id) ? 1 : null) },
-      },
-    });
-    const fork = async (userId: string) => {
-      const opened = await openComputerSession(
-        db,
-        { provider: fake.provider, metering: noMetering },
-        { ...(await member(userId)), clientId: 'agent-client' },
-      );
-      if ('error' in opened) throw new Error(opened.error);
-      await opened.done();
-      return opened.computer.id;
-    };
-    const first = await fork('a');
-    const second = await fork('a');
-    const pin = (cookie: string, id: string, body: unknown) =>
-      request('PUT', `/computer/forks/${id}/pin`, { cookie, body });
-    const forks = async (cookie: string) =>
-      (
-        (await (await request('GET', '/computer', { cookie })).json()).forks as {
-          computerId: string;
-          label: string;
-          pinned: boolean;
-        }[]
-      ).map(({ computerId, label, pinned }) => ({ computerId, label, pinned }));
-    // A name of 1 to 100 characters, trimmed, and nothing else.
-    for (const body of [
-      {},
-      { label: '' },
-      { label: '   ' },
-      { label: 'x'.repeat(101) },
-      { label: 'A', extra: 1 },
-      'nope',
-    ])
-      expect((await pin(a, first, body)).status, JSON.stringify(body)).toBe(400);
-    const pinned = await pin(a, first, { label: '  Research  ' });
-    expect(pinned.status).toBe(200);
-    expect(await pinned.json()).toEqual({ pinned: true, label: 'Research' });
-    expect(await forks(a)).toContainEqual({ computerId: first, label: 'Research', pinned: true });
-    // Another person's fork, or one that doesn't exist, is not found, to pin or unpin.
-    for (const id of [first, 'computer_unknown', 'not-an-id']) {
-      expect((await pin(b, id, { label: 'Mine' })).status).toBe(404);
-      expect((await request('DELETE', `/computer/forks/${id}/pin`, { cookie: b })).status).toBe(404);
-    }
-    // Past the deployment's cap, pinned_fork_limit; renaming a pinned one takes no new place.
-    limited.add((await member('a')).organizationId);
-    const refused = await pin(a, second, { label: 'More' });
-    expect(refused.status).toBe(409);
-    expect(await refused.json()).toEqual({ error: 'pinned_fork_limit', limit: 1 });
-    expect(await (await pin(a, first, { label: 'Deep research' })).json()).toEqual({
-      pinned: true,
-      label: 'Deep research',
-    });
-    // Unpinned, it keeps its name, and its place is free.
-    const unpinned = await request('DELETE', `/computer/forks/${first}/pin`, { cookie: a });
-    expect(unpinned.status).toBe(200);
-    expect(await unpinned.json()).toEqual({ pinned: false });
-    expect((await pin(a, second, { label: 'More' })).status).toBe(200);
-    expect(await forks(b)).toEqual([]);
+    expect((await shown())[0].status).not.toBe('in_use');
   });
 
   it("keep each page load's live view watch through the heartbeat, per user, and validate what it reports", async () => {
@@ -751,18 +679,20 @@ describe('API routes', () => {
       const response = await request('POST', '/heartbeat', { cookie: user, body: { leases } });
       return { status: response.status, json: await response.json() };
     };
-    const lease = (state: string, id: string = page) => ({ kind: 'live-view', id, state });
+    const computer = await newComputer('a');
+    const lease = (state: string, id: string = page) => ({ kind: 'live-view', id, state, computer });
     for (const leases of [
       [],
       [{ ...lease('visible'), kind: 'other' }],
       [lease('visible', 'not-a-uuid')],
       [lease('focused')],
       [{ ...lease('visible'), extra: true }],
+      [{ kind: 'live-view', id: page, state: 'visible' }],
       Array.from({ length: 9 }, () => lease('visible', randomUUID())),
     ])
       expect((await beat(a, leases)).status, JSON.stringify(leases).slice(0, 80)).toBe(400);
     expect((await request('POST', '/heartbeat', { cookie: a, body: 'not json' })).status).toBe(400);
-    // No computer yet: watching creates it.
+    // Watching wakes it.
     expect(await beat(a, [lease('visible')])).toEqual({
       status: 200,
       json: {
@@ -785,7 +715,7 @@ describe('API routes', () => {
       computer: 'running',
       watching: true,
     });
-    // Another user's heartbeat on the same lease ID reaches only their own (missing) computer.
+    // Another user's heartbeat on the same lease ID and computer finds nothing of theirs.
     expect((await beat(b, [lease('released')])).json.leases[0].status).toMatchObject({
       computer: 'none',
       watching: false,
@@ -801,41 +731,48 @@ describe('API routes', () => {
     const a = await identity('a');
     const b = await identity('b');
     const page = randomUUID();
+    const computer = await newComputer('a');
     const call = async (user: string, path: string, body: unknown) => {
       const response = await request('POST', path, { cookie: user, body });
       return { status: response.status, json: await response.json() };
     };
     for (const path of ['/computer/takeover', '/computer/hand-back'])
-      for (const body of [{}, { lease: 'not-a-uuid' }, { lease: page, extra: true }, 'not json'])
+      for (const body of [
+        {},
+        { lease: page },
+        { lease: 'not-a-uuid', computer },
+        { lease: page, computer, extra: true },
+        'not json',
+      ])
         expect((await call(a, path, body)).status, `${path} ${JSON.stringify(body)}`).toBe(400);
-    // With no agent working, a takeover creates the computer.
-    const taken = await call(a, '/computer/takeover', { lease: page });
+    // With no agent working, a takeover wakes the computer.
+    const taken = await call(a, '/computer/takeover', { lease: page, computer });
     expect(taken).toMatchObject({
       status: 200,
       json: { computer: 'running', watching: true, takeover: { mine: true, since: expect.any(String) } },
     });
     expect(fake.calls.create).toBe(1);
-    // Another user can neither hand back nor see it; the same lease ID only reaches their own computer.
-    expect((await call(b, '/computer/hand-back', { lease: page })).json).toMatchObject({
+    // Another user can neither hand back nor see it.
+    expect((await call(b, '/computer/hand-back', { lease: page, computer })).json).toMatchObject({
       computer: 'none',
       takeover: null,
     });
     // A second page load of the same user moves the takeover to itself.
     const other = randomUUID();
-    expect((await call(a, '/computer/takeover', { lease: other })).json.takeover).toEqual({
+    expect((await call(a, '/computer/takeover', { lease: other, computer })).json.takeover).toEqual({
       mine: true,
       since: taken.json.takeover.since,
     });
-    expect((await call(a, '/computer/hand-back', { lease: page })).json.takeover).toEqual({
+    expect((await call(a, '/computer/hand-back', { lease: page, computer })).json.takeover).toEqual({
       mine: false,
       since: taken.json.takeover.since,
     });
-    const handed = await call(a, '/computer/hand-back', { lease: other });
+    const handed = await call(a, '/computer/hand-back', { lease: other, computer });
     expect(handed).toMatchObject({ status: 200, json: { takeover: null, watching: true } });
-    expect((await call(a, '/computer/hand-back', { lease: other })).status).toBe(200);
+    expect((await call(a, '/computer/hand-back', { lease: other, computer })).status).toBe(200);
     // A metering refusal (a used-up allowance) refuses the takeover with when it lifts.
     refusal = { message: 'Used up.', resetsAt: new Date('2026-11-01T00:00:00Z') };
-    expect(await call(a, '/computer/takeover', { lease: page })).toEqual({
+    expect(await call(a, '/computer/takeover', { lease: page, computer })).toEqual({
       status: 403,
       json: { error: 'credit_exhausted', message: 'Used up.', resetsAt: '2026-11-01T00:00:00.000Z' },
     });
@@ -846,37 +783,42 @@ describe('API routes', () => {
     const a = await identity('a');
     const b = await identity('b');
     const page = randomUUID();
+    const computer = await newComputer('a');
     const paste = async (user: string, body: unknown) => {
       const response = await request('POST', '/computer/clipboard', { cookie: user, body });
       return { status: response.status, json: await response.json() };
     };
     for (const body of [
       {},
-      { lease: page },
-      { lease: 'not-a-uuid', text: 'x' },
-      { lease: page, text: 1 },
-      { lease: page, text: 'x', extra: true },
+      { lease: page, computer },
+      { lease: page, text: 'x' },
+      { lease: 'not-a-uuid', computer, text: 'x' },
+      { lease: page, computer, text: 1 },
+      { lease: page, computer, text: 'x', extra: true },
       'not json',
     ])
       expect((await paste(a, body)).status, JSON.stringify(body)).toBe(400);
-    // No computer, or no takeover yet.
-    expect(await paste(a, { lease: page, text: 'x' })).toEqual({ status: 409, json: { error: 'not_in_control' } });
-    await request('POST', '/computer/takeover', { cookie: a, body: { lease: page } });
+    // No takeover yet.
+    expect(await paste(a, { lease: page, computer, text: 'x' })).toEqual({
+      status: 409,
+      json: { error: 'not_in_control' },
+    });
+    await request('POST', '/computer/takeover', { cookie: a, body: { lease: page, computer } });
     const text = 'café “quoted” 日本語 🎉';
-    expect(await paste(a, { lease: page, text })).toEqual({ status: 200, json: {} });
+    expect(await paste(a, { lease: page, computer, text })).toEqual({ status: 200, json: {} });
     const sandbox = () => [...fake.sandboxes.values()][0]!;
     expect(sandbox().clipboard).toBe(text);
     // Another page load of the same user only watches; another user has no takeover, whatever lease they send.
-    expect((await paste(a, { lease: randomUUID(), text: 'other page' })).status).toBe(409);
-    expect((await paste(b, { lease: page, text: 'other user' })).status).toBe(409);
+    expect((await paste(a, { lease: randomUUID(), computer, text: 'other page' })).status).toBe(409);
+    expect((await paste(b, { lease: page, computer, text: 'other user' })).status).toBe(409);
     expect(sandbox().clipboard).toBe(text);
     // 1 MiB of UTF-8: two-byte characters count twice. A body past the upload limit is refused before it is read.
-    expect((await paste(a, { lease: page, text: 'é'.repeat(512 * 1024) })).status).toBe(200);
-    expect(await paste(a, { lease: page, text: `${'é'.repeat(512 * 1024)}x` })).toEqual({
+    expect((await paste(a, { lease: page, computer, text: 'é'.repeat(512 * 1024) })).status).toBe(200);
+    expect(await paste(a, { lease: page, computer, text: `${'é'.repeat(512 * 1024)}x` })).toEqual({
       status: 413,
       json: { error: 'too_large' },
     });
-    expect(await paste(a, { lease: page, text: 'x'.repeat(4_000_001) })).toEqual({
+    expect(await paste(a, { lease: page, computer, text: 'x'.repeat(4_000_001) })).toEqual({
       status: 413,
       json: { error: 'too_large' },
     });
@@ -884,10 +826,13 @@ describe('API routes', () => {
     // A computer that cannot take it is a 503; after the hand-back, the page is no longer in control.
     vi.spyOn(console, 'error').mockImplementation(() => {});
     fake.failClipboard();
-    expect(await paste(a, { lease: page, text })).toEqual({ status: 503, json: { error: 'service_unavailable' } });
+    expect(await paste(a, { lease: page, computer, text })).toEqual({
+      status: 503,
+      json: { error: 'service_unavailable' },
+    });
     fake.failClipboard(false);
-    await request('POST', '/computer/hand-back', { cookie: a, body: { lease: page } });
-    expect((await paste(a, { lease: page, text })).status).toBe(409);
+    await request('POST', '/computer/hand-back', { cookie: a, body: { lease: page, computer } });
+    expect((await paste(a, { lease: page, computer, text })).status).toBe(409);
   });
 
   it("paste a PNG at the API's origin by ticket, only from the web app's pages, for the page load in control", async () => {
@@ -897,15 +842,22 @@ describe('API routes', () => {
     const a = await identity('a');
     const b = await identity('b');
     const page = randomUUID();
+    const computer = await newComputer('a');
     // The ticket comes from the web app's own origin, with the session, like any change.
     const ticket = async (user: string, lease = page) => {
-      const response = await request('POST', '/computer/clipboard/ticket', { cookie: user, body: { lease } });
+      const response = await request('POST', '/computer/clipboard/ticket', { cookie: user, body: { lease, computer } });
       expect(response.status).toBe(200);
       return ((await response.json()) as { url: string }).url;
     };
     const url = await ticket(a);
     expect(url).toMatch(/^http:\/\/localhost:3197\/api\/v1\/computer\/clipboard\/image\?ticket=[\w-]+\.[\w-]+$/);
-    for (const body of [{}, { lease: 'not-a-uuid' }, { lease: page, computer: 'cmp_x' }, { lease: page, extra: 1 }])
+    for (const body of [
+      {},
+      { lease: page },
+      { lease: 'not-a-uuid', computer },
+      { lease: page, computer: 'cmp_x' },
+      { lease: page, computer, extra: 1 },
+    ])
       expect((await request('POST', '/computer/clipboard/ticket', { cookie: a, body })).status).toBe(400);
     // A PNG's signature and header, then its bytes.
     const png = (size: number) => {
@@ -947,7 +899,7 @@ describe('API routes', () => {
     expect((await preflight('https://evil.test')).headers.get('access-control-allow-origin')).toBeNull();
     // No takeover yet.
     expect(await send(url)).toEqual({ status: 409, json: { error: 'not_in_control' }, cors: origin });
-    await request('POST', '/computer/takeover', { cookie: a, body: { lease: page } });
+    await request('POST', '/computer/takeover', { cookie: a, body: { lease: page, computer } });
     const image = png(4096);
     expect(await send(url, image)).toEqual({ status: 200, json: {}, cors: origin });
     const sandbox = () => [...fake.sandboxes.values()][0]!;
@@ -955,7 +907,7 @@ describe('API routes', () => {
     // Refused: no ticket, an altered one, the relay's, one from another page load or user, from another origin, and
     // anything but a PNG.
     const ticketOf = (to: string) => new URL(to).searchParams.get('ticket')!;
-    const relay = await request('POST', '/live-view/ticket', { cookie: a, body: { lease: page } });
+    const relay = await request('POST', '/live-view/ticket', { cookie: a, body: { lease: page, computer } });
     const relayTicket = ticketOf(((await relay.json()) as { url: string }).url.replace(/^ws/, 'http'));
     const at = (value: string) => `${apiOrigin}/api/v1/computer/clipboard/image?ticket=${value}`;
     expect((await send(at(''))).status).toBe(401);
@@ -993,7 +945,7 @@ describe('API routes', () => {
     expect((await send(fresh)).status).toBe(401);
   });
 
-  it("list agents' running forks, and watch, take over, paste on, and hand back one by its ID", async () => {
+  it("list the member's computers, and watch, take over, paste on, and hand back one by its ID", async () => {
     const request = client();
     const a = await identity('a');
     const b = await identity('b');
@@ -1002,31 +954,34 @@ describe('API routes', () => {
     const agent = { ...(await member('a')), clientId: 'agent-client' };
     const opened = await openComputerSession(db, computers, agent, { label: 'Book a table' });
     if ('error' in opened) throw new Error(opened.error);
-    const fork = opened.computer.id;
+    const computer = opened.computer.id;
     const other = await openComputerSession(db, computers, { ...(await member('b')), clientId: 'agent-client' });
     if ('error' in other) throw new Error(other.error);
     const post = async (user: string, path: string, body: unknown) => {
       const response = await request('POST', path, { cookie: user, body });
       return { status: response.status, json: await response.json() };
     };
-    // The page lists the running fork with the agent using it, and only the user's own.
-    expect((await (await request('GET', '/computer', { cookie: a })).json()).forks).toEqual([
+    // The page lists the computer with the agent using it, and only the user's own.
+    expect((await (await request('GET', '/computer', { cookie: a })).json()).computers).toEqual([
       {
-        computerId: fork,
+        computerId: computer,
         label: 'Book a table',
-        pinned: false,
         createdAt: expect.any(String),
         lastUsedAt: expect.any(String),
         status: 'in_use',
         agent: { agent: null, host: 'agent-client' },
       },
     ]);
-    // A malformed ID is refused; another member's fork does not exist for this user.
-    for (const computer of ['cmp_x', `${fork}x`]) {
-      expect((await post(a, '/computer/takeover', { lease: page, computer })).status).toBe(400);
-      expect((await post(a, '/computer/clipboard', { lease: page, computer, text: 'x' })).status).toBe(400);
+    // A malformed ID is refused; another member's computer does not exist for this user.
+    for (const malformed of ['cmp_x', `${computer}x`]) {
+      expect((await post(a, '/computer/takeover', { lease: page, computer: malformed })).status).toBe(400);
+      expect((await post(a, '/computer/clipboard', { lease: page, computer: malformed, text: 'x' })).status).toBe(400);
       expect(
-        (await post(a, '/heartbeat', { leases: [{ kind: 'live-view', id: page, state: 'visible', computer }] })).status,
+        (
+          await post(a, '/heartbeat', {
+            leases: [{ kind: 'live-view', id: page, state: 'visible', computer: malformed }],
+          })
+        ).status,
       ).toBe(400);
     }
     expect(await post(a, '/computer/takeover', { lease: page, computer: other.computer.id })).toMatchObject({
@@ -1037,35 +992,34 @@ describe('API routes', () => {
       leases: [{ kind: 'live-view', id: page, state: 'visible', computer: other.computer.id }],
     });
     expect(beat.json.leases[0].status).toMatchObject({ computer: 'none', watching: false });
-    // Watching the fork, then taking it over: the agent's calls wait, and the page shows it waiting.
+    // Watching the computer, then taking it over: the agent's calls wait, and the page shows it waiting.
     expect(
-      (await post(a, '/heartbeat', { leases: [{ kind: 'live-view', id: page, state: 'visible', computer: fork }] }))
-        .json.leases[0].status,
+      (await post(a, '/heartbeat', { leases: [{ kind: 'live-view', id: page, state: 'visible', computer }] })).json
+        .leases[0].status,
     ).toMatchObject({ computer: 'running', watching: true });
     await opened.done();
-    expect(await post(a, '/computer/takeover', { lease: page, computer: fork })).toMatchObject({
+    expect(await post(a, '/computer/takeover', { lease: page, computer })).toMatchObject({
       status: 200,
       json: { takeover: { mine: true } },
     });
     expect(await useComputerSession(db, computers, agent, opened.sessionId)).toMatchObject({
       error: 'user_in_control',
     });
-    // The main computer is not taken over, and another user cannot hand the fork back.
-    expect((await post(a, '/computer/hand-back', { lease: page })).json.takeover).toBeNull();
-    expect((await post(b, '/computer/hand-back', { lease: page, computer: fork })).json).toMatchObject({
+    // Another user cannot hand it back.
+    expect((await post(b, '/computer/hand-back', { lease: page, computer })).json).toMatchObject({
       computer: 'none',
     });
-    expect(await post(a, '/computer/clipboard', { lease: page, computer: fork, text: 'on the fork' })).toEqual({
+    expect(await post(a, '/computer/clipboard', { lease: page, computer, text: 'on the computer' })).toEqual({
       status: 200,
       json: {},
     });
     const [row] = await db
       .select({ sandboxId: schema.computers.sandboxId })
       .from(schema.computers)
-      .where(eq(schema.computers.publicId, fork));
-    expect(fake.sandboxes.get(row!.sandboxId!)?.clipboard).toBe('on the fork');
+      .where(eq(schema.computers.publicId, computer));
+    expect(fake.sandboxes.get(row!.sandboxId!)?.clipboard).toBe('on the computer');
     // Handing back resumes the agent's session.
-    expect((await post(a, '/computer/hand-back', { lease: page, computer: fork })).json.takeover).toBeNull();
+    expect((await post(a, '/computer/hand-back', { lease: page, computer })).json.takeover).toBeNull();
     expect(await useComputerSession(db, computers, agent, opened.sessionId)).toMatchObject({
       sessionId: opened.sessionId,
       userHadControl: true,
@@ -1076,10 +1030,16 @@ describe('API routes', () => {
     const a = await identity('a');
     const b = await identity('b');
     const page = randomUUID();
-    await db
-      .insert(schema.computers)
-      .values({ membershipId: (await member('a')).membershipId, publicId: 'computer_creating' });
-    const starting = await client()('POST', '/computer/takeover', { cookie: a, body: { lease: page } });
+    const creating = newPublicId('computer');
+    await db.insert(schema.computers).values({
+      membershipId: (await member('a')).membershipId,
+      publicId: creating,
+      lastUsedAt: new Date(),
+    });
+    const starting = await client()('POST', '/computer/takeover', {
+      cookie: a,
+      body: { lease: page, computer: creating },
+    });
     expect(starting.status).toBe(409);
     expect(await starting.json()).toMatchObject({ error: 'starting' });
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1089,9 +1049,14 @@ describe('API routes', () => {
         throw new Error('provider down');
       },
     });
-    expect((await unreachable('POST', '/computer/takeover', { cookie: b, body: { lease: page } })).status).toBe(503);
+    const computer = await newComputer('b');
+    expect(
+      (await unreachable('POST', '/computer/takeover', { cookie: b, body: { lease: page, computer } })).status,
+    ).toBe(503);
     // The takeover is given back rather than held on a computer nobody can use.
-    const status = await (await client()('POST', '/computer/hand-back', { cookie: b, body: { lease: page } })).json();
+    const status = await (
+      await client()('POST', '/computer/hand-back', { cookie: b, body: { lease: page, computer } })
+    ).json();
     expect(status.takeover).toBeNull();
   });
 

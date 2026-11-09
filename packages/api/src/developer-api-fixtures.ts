@@ -198,7 +198,7 @@ export function useDeveloperApi() {
         headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
         ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
       }),
-    forkRow: async (computerId: string) =>
+    computerRow: async (computerId: string) =>
       (await db.select().from(schema.computers).where(eq(schema.computers.publicId, computerId)))[0]!,
     computers: () => ({ provider: fake.provider, metering: noMetering }),
   };

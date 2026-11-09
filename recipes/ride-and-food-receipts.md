@@ -21,7 +21,7 @@ Settings (change these to suit you):
 - Only business: no. (Say yes to keep only trips on my Uber business profile.)
 
 Steps:
-1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork, and tell me to pin it in the Clutchbox Dashboard so the folder is kept.
+1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork.
 2. On each site, open my trip or order history and find everything completed in the month. Skip cancelled trips and refunded orders, and list them separately.
 3. Save each receipt as a PDF: use the site's download if it has one, otherwise open the receipt and save it with the browser's Print (Save as PDF). Never ask a site to email or resend a receipt.
 4. With computer_exec, move the files from ~/Downloads into the folder, named "<date> <site> <amount> <currency>.pdf", and write summary.csv there with the columns site, date, from or restaurant, amount, tip, currency, and file.
@@ -39,4 +39,4 @@ Ground rules:
 
 ## Notes
 
-- The PDFs stay on your pinned Paperwork computer, beside your SaaS invoices if you run that recipe too.
+- The PDFs stay on your Paperwork computer, beside your SaaS invoices if you run that recipe too, until you delete it or it is replaced at your limit of computers.

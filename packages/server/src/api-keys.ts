@@ -2,7 +2,7 @@ import 'server-only';
 import { and, asc, eq, max } from 'drizzle-orm';
 import type { Auth } from './auth.ts';
 import { listProfiles, loadLatestCapture } from './captures.ts';
-import { type Caller, type ComputerFailure, SESSION_ID_PATTERN } from './computers.ts';
+import { type Caller, COMPUTER_ID_PATTERN, type ComputerFailure, SESSION_ID_PATTERN } from './computers.ts';
 import type { Database } from './database.ts';
 import { logError } from './log.ts';
 import { API_KEY_PREFIX } from './organization-auth.ts';
@@ -60,6 +60,10 @@ const sessionNotFound: ComputerFailure = {
   error: 'session_not_found',
   message: 'No such computer session for this API key. Open one with POST /api/v1/computers/sessions.',
 };
+const computerNotFoundForKey: ComputerFailure = {
+  error: 'computer_not_found',
+  message: "No such computer in this key's organization: it was replaced or deleted.",
+};
 
 // The caller for opening a computer session for a member of the key's organization, by the membership's public ID.
 // Needs the computers scope; another organization's member is not found.
@@ -106,6 +110,30 @@ export async function computerCallerForSession(
       ),
     );
   return member ? keyCaller(member, key.keyId) : sessionNotFound;
+}
+
+// The caller for deleting one of the member's computers, by the computer's ID: the computer's member, as the key.
+// Another organization's computer is not found.
+export async function computerCallerForComputer(
+  db: Database,
+  key: KeyPrincipal,
+  computerId: string,
+): Promise<Caller | typeof scopeRefused | ComputerFailure> {
+  if (!key.scopes.includes('computers')) return scopeRefused;
+  const [member] = COMPUTER_ID_PATTERN.test(computerId)
+    ? await db
+        .select({
+          userId: schema.memberships.userId,
+          membershipId: schema.memberships.id,
+          organizationId: schema.memberships.organizationId,
+        })
+        .from(schema.computers)
+        .innerJoin(schema.memberships, eq(schema.memberships.id, schema.computers.membershipId))
+        .where(
+          and(eq(schema.computers.publicId, computerId), eq(schema.memberships.organizationId, key.organizationId)),
+        )
+    : [];
+  return member ? keyCaller(member, key.keyId) : computerNotFoundForKey;
 }
 
 // The organization's members, for a key to address them by ID, with when each last synced: the newest capture of any of

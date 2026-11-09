@@ -65,7 +65,7 @@
                     "message": "Pages and client code reach the server only through the API (lib/page-api.ts, lib/api.ts)."
                   },
                   "@clutchbox/server/computers": {
-                    "allowImportNames": ["ForkView", "LiveViewStatus"],
+                    "allowImportNames": ["ListedComputer", "LiveViewStatus"],
                     "message": "Pages and client code reach the server only through the API (lib/page-api.ts, lib/api.ts)."
                   },
                   "@clutchbox/server/config": {

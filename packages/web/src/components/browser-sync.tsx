@@ -18,14 +18,11 @@ import { CopyButton } from './copy-button.tsx';
 import { SyncSettingsPanel } from './sync-settings.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-function captureLines({ capture, computer }: ComputerView) {
+function captureLines({ capture }: ComputerView) {
   if (!capture) return [];
-  const applied = computer?.appliedCaptureAt;
   return [
     `Copied from your browser ${when(capture.completedAt)} (${capture.cookieCount.toLocaleString()} cookies, checked ${when(capture.uploadedAt)}).`,
-    applied && Date.parse(applied) >= Date.parse(capture.completedAt)
-      ? 'Applied to your computer.'
-      : `Applies the next time an agent opens your computer${applied ? `, which has the copy from ${when(applied)}` : ''}.`,
+    'Applies each time an agent opens a computer.',
   ];
 }
 // The server renders as supported, so the first paint matches; the browser then checks its own client hints.

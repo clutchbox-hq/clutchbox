@@ -25,9 +25,9 @@ export const IDLE_PAUSE_MS = 60_000;
 // from an old conversation stops working.
 export const SESSION_IDLE_END_MS = 10 * 60_000;
 
-// A computer still `creating` after this long is presumed abandoned (its request died): the next computer_open takes
-// a main computer's create over, and the next sweep deletes a fork's. Creating takes well under it: E2B create plus the
-// adapter's ENSURE_CHROME_MS, or a fork's create from a snapshot, measured at up to 32 s from a heavily used main.
+// A computer still `creating` after this long is presumed abandoned (its request died): the next sweep deletes it, and
+// a new computer at the member's cap may replace it. Creating takes well under it: E2B create plus the adapter's
+// ENSURE_CHROME_MS.
 export const CREATE_STALE_MS = 3 * 60_000;
 
 // --- Retried opens (computers.ts, retriedOpen) ---
@@ -41,17 +41,6 @@ export const OPEN_RETRY_MS = 10_000;
 // How often the retry checks whether the first open has ended. A judgment call: one small query each time, and the
 // open it waits on takes 7-30 s.
 export const OPEN_RETRY_POLL_MS = 500;
-
-// --- Forks (computers.ts, Forks) ---
-
-// A fork unused this long (no open or call) is deleted. Long enough for an agent, or another conversation of the
-// member's, to come back to its work after a weekend; short enough that forks nobody returns to stop costing storage.
-export const FORK_UNUSED_MS = 7 * 24 * 3600_000;
-
-// How long the main computer runs for a snapshot: a paused one is resumed for it. The snapshot takes about a second, and
-// main is paused right after unless live view holds it, so this only bounds a snapshot whose pause was lost. The idle
-// minute, as for a call.
-export const SNAPSHOT_HOLD_MS = IDLE_PAUSE_MS;
 
 // --- Live view holds (computers.ts) ---
 
@@ -126,8 +115,8 @@ export const LIVE_VIEW_UPSTREAM_OPEN_MS = 10_000;
 
 // The CDP proxy's connection runs into the same platform limit as live view's, for the same reasons: the route
 // manifest writes it into the /api/v1/cdp route file as its literal `maxDuration`. The connection is one call of its
-// computer session (computers.ts, useComputerSession), holding control and keeping the fork running for as long as it
-// lasts, up to this.
+// computer session (computers.ts, useComputerSession), holding control and keeping the computer running for as long as
+// it lasts, up to this.
 export const CDP_MAX_DURATION_MS = LIVE_VIEW_MAX_DURATION_MS;
 
 // The proxy closes this long before CDP_MAX_DURATION_MS, with code 4000 'reconnect', so the client reconnects on a close
@@ -151,7 +140,7 @@ export const CDP_ACCESS_RECHECK_MS = HEARTBEAT_MS;
 export const CDP_PING_MS = LIVE_VIEW_PING_MS;
 export const CDP_UPSTREAM_OPEN_MS = LIVE_VIEW_UPSTREAM_OPEN_MS;
 
-// Reaching the fork's Chrome before the upgrade: starting Chrome if the user or a crash quit it (the adapter's cold
+// Reaching the computer's Chrome before the upgrade: starting Chrome if the user or a crash quit it (the adapter's cold
 // start), then the bridge, and the round trip. Usually both already run, and this takes a second.
 export const CDP_ENDPOINT_MS = ENSURE_CHROME_MS + CDP_BRIDGE_START_MS + STREAM_MARGIN_MS;
 
@@ -229,8 +218,8 @@ export const PLATFORM_BUDGET_MS = 15_000;
 
 // --- Apply-on-open (computers.ts, applyLatestCapture) ---
 
-// An apply on computer_open must finish, or give up, this long after the call starts, after creating a fork if it
-// does (about 7-14 s, up to 32 s from a heavily used main). Leaves 25 s of CALL_BUDGET_MS for the screenshot.
+// An apply on computer_open must finish, or give up, this long after the call starts, after creating a computer if it
+// does. Leaves 25 s of CALL_BUDGET_MS for the screenshot.
 export const SYNC_DEADLINE_MS = 75_000;
 
 // The most time the provider may spend applying cookies. It must fit the steps in the E2B adapter's SYNC_STEP_MS that can

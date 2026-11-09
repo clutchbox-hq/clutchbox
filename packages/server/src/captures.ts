@@ -8,7 +8,7 @@ import {
   type SyncSettings,
   syncSettingsSchema,
 } from '@clutchbox/capture';
-import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Database } from './database.ts';
 import { logError } from './log.ts';
@@ -280,8 +280,7 @@ export async function changeSyncSettings(
   });
 }
 
-// Deletes captures and, with them, their baselines on the member's computers and on the snapshots forks start from, so a
-// later upload re-applies from scratch (no baseline: wholesale per site); synced sites stay recorded so the next open
+// Deletes captures and, with them, their baselines on the member's computers, so a later upload re-applies from scratch (no baseline: wholesale per site); synced sites stay recorded so the next open
 // can clear them. Without `browser`, every capture of the member, under a tombstone that refuses uploads received before
 // now; `disconnect` also refuses later ones, and `forget` (Delete everything) deletes the member's sync settings too.
 // With `browser` (a connected browser's ID), only that browser's capture and its profile's baselines, and no tombstone:
@@ -322,16 +321,7 @@ export async function deleteCapturesIn(
     .set({ appliedCaptureDigest: null, appliedCapture: null })
     .where(
       and(
-        or(
-          inArray(profiles.computerId, own),
-          inArray(
-            profiles.snapshotId,
-            tx
-              .select({ id: schema.computerSnapshots.id })
-              .from(schema.computerSnapshots)
-              .where(inArray(schema.computerSnapshots.computerId, own)),
-          ),
-        ),
+        inArray(profiles.computerId, own),
         browser === undefined ? undefined : eq(profiles.connectedBrowserId, browser),
       ),
     );

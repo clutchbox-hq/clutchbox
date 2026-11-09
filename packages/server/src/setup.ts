@@ -8,7 +8,7 @@ import type { Member } from './organizations.ts';
 import * as schema from './schema.ts';
 
 // Setup: the overview's checklist, one per member. Browser sync and Agents are read from
-// current state; "set up" is recorded when an agent first opens the main computer. Every write
+// current state; "set up" is recorded when an agent first opens a computer. Every write
 // here is best-effort and runs outside other transactions, so it never fails an upload or a tool call.
 export type SetupStep = 'browserSynced' | 'agentConnected' | 'setUp';
 type Recorded = { first: boolean; firstEver: boolean; preexisting: boolean };
