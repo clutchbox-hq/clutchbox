@@ -19,9 +19,9 @@ permissions:
 jobs:
   # Jobs run in parallel; the release workflow, which calls this one, waits for all of them.
   check:
-    # Pull requests, which can come from forks, use GitHub's runners, free for public repos; pushes and releases use
-    # Blacksmith's faster ones, which the project pays for.
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    # GitHub's own runners, free and unlimited for public repos at 4 vCPU and 16 GB, for pull requests (which can come
+    # from forks), pushes, and releases alike.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -46,7 +46,7 @@ jobs:
   # The web app's production build, with placeholder configuration: catches what only `next build` sees (route segment
   # config, server-to-client props, CSS). It builds the manual extension zip for the placeholder origin first.
   build:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -64,7 +64,7 @@ jobs:
   # The README's self-host quickstart: compose builds the image, the app applies migrations to compose's Postgres when
   # it starts, and serves.
   compose:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -81,7 +81,7 @@ jobs:
         run: docker compose logs
 
   test:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7

@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   version:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       new: ${{ steps.version.outputs.new }}
@@ -59,8 +59,7 @@ jobs:
   publish:
     needs: [version, check]
     if: needs.version.outputs.new == 'true'
-    # GitHub's own runner: npm accepts provenance only from GitHub-hosted runners, and Blacksmith's count as
-    # self-hosted.
+    # npm accepts provenance only from GitHub-hosted runners, so this job stays on one.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
