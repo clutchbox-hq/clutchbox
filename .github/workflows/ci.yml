@@ -87,5 +87,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # The Playwright adapter's tests drive a real Chromium.
-      - run: bunx playwright-core install --with-deps chromium
+      # Without --with-deps: GitHub's Ubuntu image ships Google Chrome, so Chromium's system libraries are already there,
+      # and installing them with apt took most of this step's 52 s.
+      - run: bunx playwright-core install chromium
       - run: bun run test
