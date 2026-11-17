@@ -62,14 +62,14 @@
     "@types/ws": "8.18.2",
     "@vercel/functions": "3.10.1",
     "drizzle-orm": "0.45.4",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwindcss": "4.3.3",
     "ws": "8.22.0"
   },
   "peerDependencies": {
-    "next": "16.4.2",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   }
