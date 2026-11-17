@@ -132,16 +132,24 @@ describe('the API server', () => {
       expect((await request(path)).status, path).toBe(404);
   });
 
-  it('answers /api/live without the database, which /api/health checks', async () => {
-    const handle = apiHandler(() => Promise.reject(new Error('database unreachable')));
-    const live = await handle(new Request(`${origin}/api/live`));
-    expect([live.status, await live.json(), live.headers.get('cache-control')]).toEqual([
-      200,
-      { status: 'ok' },
-      'no-store',
-    ]);
-    expect((await handle(new Request(`${origin}/api/live`, { method: 'HEAD' }))).status).toBe(200);
-    expect((await handle(new Request(`${origin}/api/health`))).status).toBe(503);
+  it('checks the database on the first health check and after each failure, not on every one', async () => {
+    const query = vi.spyOn(db, 'select');
+    const status = async (handle: ReturnType<typeof apiHandler>) =>
+      (await handle(new Request(`${origin}/api/health`))).status;
+    const ready = apiHandler(createServices(defaultServerHooks));
+    expect(await status(ready)).toBe(200);
+    const checked = query.mock.calls.length;
+    expect(checked).toBeGreaterThan(0);
+    expect([await status(ready), await status(ready)]).toEqual([200, 200]);
+    expect(query.mock.calls.length).toBe(checked);
+
+    // A database of another environment's data class fails the check, and each check tries again.
+    await db.update(schema.installation).set({ dataClass: 'production' });
+    const misplaced = apiHandler(createServices(defaultServerHooks));
+    expect(await status(misplaced)).toBe(503);
+    const failed = query.mock.calls.length;
+    expect(await status(misplaced)).toBe(503);
+    expect(query.mock.calls.length).toBeGreaterThan(failed);
   });
 
   it('serves HTTP with its cookies and bodies, and WebSocket upgrades, over Node', async () => {
