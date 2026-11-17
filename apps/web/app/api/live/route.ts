@@ -1,0 +1,9 @@
+// Generated from the route manifest in @clutchbox/web (src/route-manifest.ts) by its
+// generate-routes script. Change the manifest and regenerate rather than editing this file.
+import { liveRoute } from '@clutchbox/web/routes/health';
+import { getServices } from '@/deployment/server.ts';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export const GET = liveRoute(getServices);

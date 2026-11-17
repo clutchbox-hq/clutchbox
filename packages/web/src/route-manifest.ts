@@ -139,6 +139,14 @@ export const routeManifest: RouteEntry[] = [
     segment: server,
   },
   {
+    id: 'live',
+    dir: 'api/live',
+    file: 'route.ts',
+    module: 'health',
+    factory: { name: 'liveRoute', as: ['GET'] },
+    segment: server,
+  },
+  {
     // One tool call runs inside this limit (CALL_BUDGET_MS is derived from it).
     id: 'mcp',
     dir: 'api/mcp',

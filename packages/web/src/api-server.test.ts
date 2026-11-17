@@ -132,6 +132,18 @@ describe('the API server', () => {
       expect((await request(path)).status, path).toBe(404);
   });
 
+  it('answers /api/live without the database, which /api/health checks', async () => {
+    const handle = apiHandler(() => Promise.reject(new Error('database unreachable')));
+    const live = await handle(new Request(`${origin}/api/live`));
+    expect([live.status, await live.json(), live.headers.get('cache-control')]).toEqual([
+      200,
+      { status: 'ok' },
+      'no-store',
+    ]);
+    expect((await handle(new Request(`${origin}/api/live`, { method: 'HEAD' }))).status).toBe(200);
+    expect((await handle(new Request(`${origin}/api/health`))).status).toBe(503);
+  });
+
   it('serves HTTP with its cookies and bodies, and WebSocket upgrades, over Node', async () => {
     const cookie = await signedIn();
     server = apiServer(createServices(defaultServerHooks));
