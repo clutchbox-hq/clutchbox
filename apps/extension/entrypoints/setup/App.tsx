@@ -1,4 +1,4 @@
-import type { ServerResponse } from '@clutchbox/capture';
+import { parseSetupLink, type Response, type ServerResponse, siteGroups, withCompanions } from '@clutchbox/capture';
 import { useEffect, useRef, useState } from 'react';
 import { allSitesOffered } from '../../src/build.ts';
 import { serverOrigin } from '../../src/server.ts';
@@ -13,8 +13,10 @@ import { pendingMessage, type ServerChoice, useCaptureActions } from '../../src/
 const heading = 'font-heading text-2xl font-medium';
 
 // The tab that opens on install: agree and sign in, then add sites from the suggestions. `#server` (from the popup)
-// opens signing in to another server.
+// opens signing in to another server. A setup link (`#add=…`, setup-link.ts) from a server's web app lists sites to
+// add first, on that server's connection.
 export function App() {
+  const [link] = useState(() => parseSetupLink(location.hash));
   const [allSitesOpen, setAllSitesOpen] = useState(false);
   // As in the popup: the connection this tab acts on; or signing in to another server, from when the list held
   // `before`.
@@ -56,6 +58,22 @@ export function App() {
         ...(name ? { name } : {}),
       });
   };
+  // Opened from a setup link: once the connections are known, act on the link's server, the organization it names
+  // there or else its first one; a server with no connection yet is offered for signing in, warning and all.
+  const linking = useRef(!!link?.origin);
+  useEffect(() => {
+    if (!linking.current || !status || !link?.origin) return;
+    linking.current = false;
+    const onServer = status.connections.filter(each => each.origin === link.origin);
+    const match = onServer.find(each => each.organization?.id === link.organization) ?? onServer[0];
+    if (match) setSelected(match.id);
+    else if (status.connections.length || link.origin !== serverOrigin)
+      void (chrome.runtime.sendMessage({ type: 'server', origin: link.origin }) as Promise<Response | ServerResponse>)
+        .then(response => {
+          if ('trust' in response) chooseServer(response);
+        })
+        .catch(() => undefined);
+  });
   const host = new URL(origin).host;
   const current = connections.find(each => each.id === status?.connection);
   const settings = status?.settings;
@@ -63,6 +81,11 @@ export function App() {
   const connected = signedIn && (settings?.connected ?? false);
   const allSites = connected && settings?.mode === 'all';
   const sites = settings?.sites ?? [];
+  const linkSites = [...new Set((link?.sites ?? []).flatMap(site => withCompanions(site, config.companions)))];
+  const needed = allSites ? [] : linkSites.filter(site => !sites.includes(site) && !blocked(site));
+  const groups = siteGroups(linkSites, config.suggestedSites);
+  const linkAdded = connected && (allSites || linkSites.every(site => sites.includes(site)));
+  const neededNames = groups.filter(group => group.sites.some(site => needed.includes(site))).map(each => each.name);
 
   const header = (
     <header>
@@ -97,6 +120,43 @@ export function App() {
       {status && signedIn && <SyncStatus status={status} busy={busy} onReconnect={reconnect} />}
       {signedIn && !connected && status && <p className={hint}>{syncMessage(status.sync)}</p>}
 
+      {link && (
+        <section className="grid gap-3" aria-labelledby="link-heading">
+          <h2 id="link-heading" className={heading}>
+            Sites to add
+          </h2>
+          <p className={hint}>
+            {link.origin ? new URL(link.origin).host : host} asked for these sites so your agent can use them. Nothing
+            syncs until you add them.
+          </p>
+          <ul className="grid border-t">
+            {groups.map(group => {
+              const reason = group.sites.map(blocked).find(Boolean);
+              const added = allSites || group.sites.every(site => sites.includes(site));
+              return (
+                <li key={group.name} className="flex items-center justify-between gap-3 border-b py-1.5">
+                  <span>{group.name}</span>
+                  <span className={added ? 'text-[13px] text-foreground' : hint}>
+                    {added ? 'Added' : reason || 'Not added yet'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {linkAdded ? (
+            <p className="text-foreground">All set. You can close this tab.</p>
+          ) : !needed.length ? null : connected ? (
+            <div>
+              <Button size="lg" disabled={busy || pending} onClick={() => addSites(needed)}>
+                Add {new Intl.ListFormat('en', { type: 'conjunction' }).format(neededNames)}
+              </Button>
+            </div>
+          ) : (
+            <p className={hint}>Agree and connect below. That adds these sites in the same click.</p>
+          )}
+        </section>
+      )}
+
       <section className="grid gap-3" aria-labelledby="agree-heading">
         <h2 id="agree-heading" className={heading}>
           Browser sync
@@ -109,7 +169,7 @@ export function App() {
               {current && otherHost(current) ? ` on ${otherHost(current)}` : ''}.
             </p>
             {!connected && (
-              <Button disabled={busy || pending} onClick={() => connect('sites')}>
+              <Button disabled={busy || pending} onClick={() => connect('sites', needed)}>
                 Sync here again
               </Button>
             )}
@@ -127,7 +187,7 @@ export function App() {
           </div>
         ) : (
           <div className="grid justify-items-start gap-2">
-            <Button size="lg" disabled={busy || pending || !status} onClick={() => connect('sites')}>
+            <Button size="lg" disabled={busy || pending || !status} onClick={() => connect('sites', needed)}>
               Agree and connect
             </Button>
             {status?.connecting ? (

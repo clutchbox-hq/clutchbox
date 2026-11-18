@@ -997,7 +997,7 @@ describe('whole-browser authorization and lifecycle', () => {
     await test.writeSession({ [recordKey]: { status: { state: 'capturing' } } });
     expect(await test.restart().handle({ type: 'status' })).toMatchObject({ capture: { state: 'interrupted' } });
   });
-  it('accepts the popup and the setup tab, the redirect page for the exchange only, and rejects others', () => {
+  it('accepts the popup, the setup tab in its own tab, the redirect page for the exchange only, and rejects others', () => {
     const page = (path: string, extra: object = {}) => ({ id: 'own', url: `chrome-extension://own/${path}`, ...extra });
     const tab = { tab: { id: 4 } as chrome.tabs.Tab, frameId: 0 };
     const status = { type: 'status' };
@@ -1005,12 +1005,15 @@ describe('whole-browser authorization and lifecycle', () => {
     expect(trustedSender(page('popup.html'), 'own', status)).toBe(true);
     expect(trustedSender(page('setup.html', tab), 'own', status)).toBe(true);
     expect(trustedSender(page('setup.html#server', tab), 'own', status)).toBe(true);
+    expect(trustedSender(page('setup.html#add=x.com&origin=https://capture.test', tab), 'own', status)).toBe(true);
     expect(trustedSender(page('connected.html', tab), 'own', exchange)).toBe(true);
     expect(trustedSender(page('connected.html?code=x&state=y', tab), 'own', exchange)).toBe(true);
     for (const [sender, message] of [
       [{ id: 'own', url: 'https://capture.test/' }, status],
       [page('setup.html?x'), status],
-      [page('setup.html#other'), status],
+      [page('setup.html'), status],
+      [page('setup.html#add=x.com', { ...tab, frameId: 1 }), status],
+      [page('setup.html#add=x.com', { frameId: 0 }), status],
       [page('other.html'), status],
       [{ ...page('popup.html'), id: 'other' }, status],
       [{ ...page('setup.html'), id: 'other' }, status],

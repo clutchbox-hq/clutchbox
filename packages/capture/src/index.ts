@@ -519,5 +519,6 @@ export interface ExchangeResponse {
 export * from './environment.ts';
 export * from './oauth.ts';
 export * from './servers.ts';
+export * from './setup-link.ts';
 export * from './sites.ts';
 export * from './sync.ts';

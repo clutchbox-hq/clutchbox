@@ -28,8 +28,12 @@ export default defineConfig({
     optional_host_permissions: [...browserOrigins],
     // The OAuth redirect page, which the server's redirect opens. The navigation's initiator is the server, or the
     // identity provider the person signed in with mid-connect, and a connection can be on any HTTPS server, so any
-    // HTTPS page may open it; it only finishes a flow this extension started (controller.ts, exchange).
-    web_accessible_resources: [{ resources: ['connected.html'], matches: [...serverOrigins(server), 'https://*/*'] }],
+    // HTTPS page may open it; it only finishes a flow this extension started (controller.ts, exchange). The setup tab
+    // too, so a server's web app can open it with sites to add (setup-link.ts in @clutchbox/capture): it only suggests
+    // them, and the person adds them with a click and Chrome's prompt.
+    web_accessible_resources: [
+      { resources: ['connected.html', 'setup.html'], matches: [...serverOrigins(server), 'https://*/*'] },
+    ],
     incognito: 'not_allowed',
     // Connections reach their servers over HTTPS, and the build's own server, which may be on HTTP on this machine.
     content_security_policy: {

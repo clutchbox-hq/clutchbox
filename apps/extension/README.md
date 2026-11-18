@@ -30,6 +30,10 @@ A server outside the verified list gets a full-page warning first, before any pe
 
 `chrome://policy` shows what Chrome loaded. The schema is [`public/managed-schema.json`](public/managed-schema.json).
 
+## Opening the setup tab with sites
+
+A server's web app can open the setup tab with sites to add, such as the ones a job needs: `chrome-extension://<extension ID>/setup.html#add=x.com,threads.com&origin=https://agents.example.com&organization=<organization ID>` (build it with `setupLinkUrl` from `@clutchbox/capture`). The tab lists those sites first, on that server's connection, and adds them only when the person clicks **Add** and allows Chrome's prompt, or in the same click as **Agree and connect** before signing in. A server it isn't signed in to is offered for signing in, with the warning when it's unverified. Any page can open the tab, but it works only top-level in its own tab, never in a frame.
+
 ## Build it for your server
 
 A self-hosted web app's Browser sync page already offers this build, made for the app's origin. To build it yourself:

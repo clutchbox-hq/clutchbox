@@ -1756,8 +1756,9 @@ export class CaptureController {
   }
 }
 
-// The popup and the setup tab send any request but `exchange`; the redirect page, top-level in its own tab, sends
-// only `exchange`. Its address carries the code, so only its path is compared.
+// The popup and the setup tab send any request but `exchange`; the redirect page sends only `exchange`. Web pages can
+// open the setup tab (with a setup link in its hash) and the redirect page (with the code in its query), so both
+// count only top-level in their own tab, never framed by a page, and only their path is compared.
 export function trustedSender(
   sender: Pick<chrome.runtime.MessageSender, 'id' | 'url' | 'frameId' | 'tab'>,
   extensionId: string,
@@ -1766,18 +1767,14 @@ export function trustedSender(
   if (sender.id !== extensionId || !sender.url) return false;
   const base = `chrome-extension://${extensionId}/`;
   const exchange = (message as { type?: unknown } | null)?.type === 'exchange';
-  // `setup.html#server` is the setup tab opened at Connect to another server.
-  if (['popup.html', 'setup.html', 'setup.html#server'].some(page => sender.url === `${base}${page}`)) return !exchange;
+  if (sender.url === `${base}popup.html`) return !exchange;
   let url: URL;
   try {
     url = new URL(sender.url);
   } catch {
     return false;
   }
-  return (
-    `${url.protocol}//${url.host}${url.pathname}` === `${base}connected.html` &&
-    sender.frameId === 0 &&
-    sender.tab !== undefined &&
-    exchange
-  );
+  const inTab = sender.frameId === 0 && sender.tab !== undefined;
+  if (`${url.protocol}//${url.host}${url.pathname}${url.search}` === `${base}setup.html`) return inTab && !exchange;
+  return `${url.protocol}//${url.host}${url.pathname}` === `${base}connected.html` && inTab && exchange;
 }
