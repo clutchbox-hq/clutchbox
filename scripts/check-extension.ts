@@ -21,11 +21,13 @@ assert.equal(manifest.host_permissions, undefined);
 // Builds from 26.1026.1 connect to other servers too. The web app offers the latest release, which may predate that,
 // so an older build is checked as it was released: its own server only.
 const otherServers = compareVersions(manifest.version, '26.1026.1') >= 0;
-// Only the OAuth redirect page, reachable from the build's server and any HTTPS server or identity provider (before
-// other servers, the build's server and Google's sign-in).
+// Builds from 26.1118.0 also open the setup tab from a server's setup link.
+const setupLinks = compareVersions(manifest.version, '26.1118.0') >= 0;
+// Only the OAuth redirect page and, with setup links, the setup tab, reachable from the build's server and any HTTPS
+// server or identity provider (before other servers, the build's server and Google's sign-in).
 assert.deepEqual(manifest.web_accessible_resources, [
   {
-    resources: ['connected.html'],
+    resources: setupLinks ? ['connected.html', 'setup.html'] : ['connected.html'],
     matches: [`${serverOrigin}/*`, otherServers ? 'https://*/*' : 'https://accounts.google.com/*'],
   },
 ]);
