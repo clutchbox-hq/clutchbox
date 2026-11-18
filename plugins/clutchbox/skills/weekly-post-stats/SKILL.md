@@ -18,7 +18,7 @@ Settings (change these to suit you):
 
 Steps:
 1. Open a computer. On each network, open my own profile and tell me which account is signed in.
-2. List my own posts from the week (not replies or reposts). For each, read the numbers the network shows on the post or its analytics page: views or impressions, likes, replies or comments, reposts, and link clicks where shown. Leave a number blank if the site doesn't show it; never estimate one.
+2. List my own posts from the week (not replies or reposts). For each, read the numbers the network shows on the post or its analytics page: views or impressions, likes, replies or comments, reposts, and link clicks where shown. An analytics page can show zeros for a few seconds before its numbers load, so wait for them. Leave a number blank if the site doesn't show it; never estimate one.
 3. Make one table, newest first: network, date, the first 60 characters, link, and the numbers.
 4. Under it, give each network's totals, the three posts with the most views or impressions, and in two or three sentences what those posts have in common.
 5. If you can write files where you run, add the rows to post-stats.csv in your working folder (create it with a header row if it's missing), and compare the totals with last week's rows if they're there.

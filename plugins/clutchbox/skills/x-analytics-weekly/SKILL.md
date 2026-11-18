@@ -17,8 +17,8 @@ Settings (change these to suit you):
 
 Steps:
 1. Open a computer and go to https://x.com/i/account_analytics. Tell me which account is signed in. If X shows analytics only with a subscription the account doesn't have, say so and stop.
-2. Set the range to the week and read impressions, engagement rate, engagements, profile visits, replies, likes, reposts, bookmarks, shares, new follows, and unfollows. Do the same for the week before.
-3. List the week's 5 posts with the most impressions, with their link, impressions, engagements, and new follows if shown.
+2. Set the range to the week and read impressions, engagement rate, engagements, profile visits, replies, likes, reposts, bookmarks, shares, new follows, and unfollows. Do the same for the week before. X holds back the overview's detailed numbers until an account has 50 followers; if it says so, tell me, and build the totals from the posts in step 3 instead.
+3. On the Content tab (https://x.com/i/account_analytics/content), list the week's 5 posts with the most impressions, with their link, impressions, engagements, and new follows if shown. Each post's own analytics page can show zeros for a few seconds before its numbers load; wait for them.
 4. Make one table with each number, the week before, and the change in percent. Under it, in three sentences or fewer, say what moved most and what the top posts have in common.
 5. If you can write files where you run, add the totals to x-analytics-weekly.csv in your working folder (create it with a header row if it's missing).
 
