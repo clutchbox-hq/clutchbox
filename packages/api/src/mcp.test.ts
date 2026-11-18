@@ -344,6 +344,15 @@ describe('remote MCP OAuth boundary', () => {
       'browser',
       'computer_exec',
     ]);
+    // Anthropic's and OpenAI's directories reject a server whose tools leave any of these hints unset.
+    for (const tool of listed.result.tools as { name: string; title?: string; annotations?: Record<string, unknown> }[])
+      expect({ name: tool.name, title: typeof tool.title, ...tool.annotations }).toMatchObject({
+        name: tool.name,
+        title: 'string',
+        readOnlyHint: expect.any(Boolean),
+        destructiveHint: expect.any(Boolean),
+        openWorldHint: expect.any(Boolean),
+      });
     const discovered = await rpc(await call(token.access_token, 'server/discover', {}, '2026-07-28'));
     expect(discovered.error).toBeUndefined();
     expect(discovered.result).toBeDefined();

@@ -1,0 +1,15 @@
+{
+  "name": "clutchbox",
+  "owner": {
+    "name": "Clutchbox",
+    "url": "https://www.clutchbox.dev"
+  },
+  "description": "Clutchbox: a cloud computer for your agent that is already signed in as you.",
+  "plugins": [
+    {
+      "name": "clutchbox",
+      "source": "./plugins/clutchbox",
+      "description": "A cloud computer for your agent that's already signed in as you, with recipes as skills."
+    }
+  ]
+}

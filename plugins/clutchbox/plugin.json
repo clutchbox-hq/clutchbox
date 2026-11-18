@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "clutchbox",
+  "version": "0.1.0",
+  "description": "A cloud computer for your agent that's already signed in as you, with recipes for the work behind your sign-ins: social replies, monthly invoices, subscriptions, and dashboards with no API.",
+  "author": { "name": "Clutchbox", "url": "https://www.clutchbox.dev" },
+  "homepage": "https://www.clutchbox.dev",
+  "repository": "https://github.com/clutchbox-hq/clutchbox",
+  "license": "Apache-2.0",
+  "keywords": ["computer-use", "browser", "sign-in", "mcp", "recipes"]
+}

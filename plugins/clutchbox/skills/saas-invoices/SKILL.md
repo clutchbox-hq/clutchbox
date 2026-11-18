@@ -1,0 +1,43 @@
+---
+name: saas-invoices
+description: "Download last month's SaaS invoices, on the user's Clutchbox computer, which is signed in as them. On the 2nd of every month, your agent goes to each SaaS billing page you use, downloads last month's invoices into one folder on your computer, and lists them with their totals for your bookkeeping."
+---
+
+# Download last month's SaaS invoices
+
+Sites: github.com, notion.so. The user syncs their sign-ins to these with the Clutchbox extension; if one isn't signed in on the computer, follow sign_in_help from computer_open.
+
+Run the task below with the Clutchbox tools. Its settings are defaults: where the user asked for something else, do that instead.
+
+```text
+Use Clutchbox to download last month's invoices from my SaaS billing pages.
+
+Settings (change these to suit you):
+- Billing pages: GitHub, Notion. (Add the others you pay for, such as Vercel, Linear, Figma, or Slack. Each one must be synced in the Clutchbox extension.)
+- Month: last calendar month.
+- Folder: ~/Invoices/<YYYY-MM> on the computer.
+
+Steps:
+1. Call computer_list. If I have a computer named Paperwork, open it; otherwise open a new computer with the label Paperwork.
+2. For each billing page, find the account's billing or invoice history from its settings. If the site has several workspaces or organizations, check each one I pay for.
+3. Download every invoice or receipt dated in the month as a PDF. If one has no download, open it and save it as a PDF with the browser's Print (Save as PDF).
+4. With computer_exec, move the files from ~/Downloads into the folder, named "<date> <vendor> <amount> <currency>.pdf", and write summary.csv there with the columns vendor, date, invoice number, amount, currency, and file.
+5. Show me the table, the total per currency, and any billing page with no invoice that month or that you couldn't reach. If you can write files where you run, save a copy of summary.csv in your working folder as invoices-<YYYY-MM>.csv.
+
+Only read and download: don't pay an invoice, change a plan or payment method, or edit billing details, even if a page asks.
+
+Ground rules:
+- Work only on the Clutchbox computer. If it says busy, wait until busy_until and try once more.
+- Never type a password or a one-time code. If a site wants me to sign in, skip it, name it at the end, and follow sign_in_help.
+- If you need my decision and I'm not here, as in a scheduled run, stop at that step and end with the question. Don't guess.
+- When you're done, call computer_close.
+```
+
+## Notes
+
+- The PDFs stay on your Paperwork computer until you delete it or it is replaced at your limit of computers; watch it in live view to check them.
+- GitHub asks you to confirm your password before some billing settings. If it does, the agent stops and names the page instead of typing it.
+
+## Run it on a schedule
+
+It's meant to run on the 2nd of every month at 9:00 (cron `0 9 2 * *`). If the user wants that, set it up in your own scheduler if you have one, or tell them how to in theirs. Run it once first so the Clutchbox tools are allowed and later runs don't stop to ask.

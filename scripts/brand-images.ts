@@ -48,6 +48,9 @@ export const webAppIcons: Record<string, Image> = {
   'favicon.ico': { html: mark(true), size: [48, 48], ico: true },
 };
 export const extensionIcon = (size: number): Image => ({ html: mark(true), size: [size, size] });
+// The agent plugin's icon, which Anthropic's directory takes once, at first submission: square and opaque, 512 to
+// 2048 px.
+export const pluginIcon: Image = { html: mark(false), size: [1024, 1024] };
 // A website's share card.
 export const shareCard: Image = {
   html: `<div class="ground" style="display:flex;flex-direction:column;justify-content:space-between;padding:72px 80px">

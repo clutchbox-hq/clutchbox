@@ -18,6 +18,7 @@
     "build:extension": "bun run --cwd apps/extension build",
     "zip:manual": "node scripts/zip-manual.ts",
     "check:cli-version": "node scripts/check-cli-version.ts",
+    "check:plugin-version": "node scripts/check-plugin-version.ts",
     "check:extension-version": "node scripts/check-extension-version.ts",
     "check:extension": "node scripts/check-extension.ts",
     "check:verified-servers": "node scripts/check-verified-servers.ts",

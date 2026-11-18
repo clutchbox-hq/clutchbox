@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "clutchbox": { "type": "streamable-http", "url": "https://api.clutchbox.dev/api/mcp" }
+  }
+}

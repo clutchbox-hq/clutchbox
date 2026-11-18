@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { recipes } from './index.ts';
 import { loadCatalog } from './load.ts';
 import { parseRecipe } from './parse.ts';
+import { skillFile } from './plugin.ts';
 
 const file = (frontmatter: string, body: string) => `---\n${frontmatter}\n---\n\n${body}`;
 const frontmatter = [
@@ -58,5 +59,19 @@ describe('the recipes in this repository', () => {
     expect(catalog.recipes.length).toBeGreaterThan(0);
     expect(new Set(catalog.recipes.map(recipe => recipe.slug)).size).toBe(catalog.recipes.length);
     expect(recipes).toEqual(catalog.recipes);
+  });
+});
+
+describe('the plugin skills', () => {
+  it('fit the SKILL.md limits agents enforce', () => {
+    for (const recipe of loadCatalog().recipes) {
+      const [, front] = skillFile(recipe).split('---\n');
+      const name = front?.match(/^name: (.+)$/m)?.[1] ?? '';
+      const description = JSON.parse(front?.match(/^description: (.+)$/m)?.[1] ?? '""') as string;
+      expect(name).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(name.length).toBeLessThanOrEqual(64);
+      expect(description).toContain(recipe.summary);
+      expect(description.length).toBeLessThanOrEqual(1024);
+    }
   });
 });

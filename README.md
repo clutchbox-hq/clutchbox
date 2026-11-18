@@ -31,7 +31,7 @@ A Chrome extension keeps the sign-ins for the sites you pick in sync, one way, t
 **For you: your assistant, signed in as you.**
 
 1. Add the [extension](https://chromewebstore.google.com/detail/agent-computers-%E2%80%94-browser/bjmfpnkjkdkfimdfgbgepmdgdnodpmmi) and pick your sites.
-2. Connect Claude, ChatGPT, Claude Code, or Codex at [clutchbox.dev](https://www.clutchbox.dev).
+2. Connect Claude, ChatGPT, Claude Code, or Codex at [clutchbox.dev](https://www.clutchbox.dev), or install the [plugin](plugins/clutchbox#readme), which brings the [recipes](recipes) as skills.
 3. Ask. It starts signed in, on a fresh computer you can watch live and take over.
 
 **For your users: your app, signed in as each user.**
@@ -110,7 +110,8 @@ Then sign in at <http://localhost:3000>, with the link from Mailpit at <http://l
 | --- | --- |
 | [`apps/extension`](apps/extension) | The Chrome extension (Manifest V3) that captures the sites you authorize and syncs them to your server. |
 | [`apps/web`](apps/web) | The web app for one organization: the dashboard, sign-in, the API, and MCP. [`Dockerfile`](Dockerfile) and [`compose.yaml`](compose.yaml) run it with Postgres, the API in its own container behind Caddy. |
-| [`packages/cli`](packages/cli) | `npx clutchbox`: connects Claude Code and Codex to a Clutchbox server and opens setup. |
+| [`plugins/clutchbox`](plugins/clutchbox) | The agent plugin for Claude Code, Codex, Claude, and ChatGPT: the hosted service's MCP server and the recipes as skills. This repository is its marketplace. |
+| [`packages/cli`](packages/cli) | `npx clutchbox`: connects Claude Code and Codex to a Clutchbox server (with the plugin, for the hosted service) and opens setup. |
 | [`packages/sdk`](packages/sdk) | The TypeScript SDK for the developer REST API: members' latest captures, and computer sessions driven over CDP. |
 | [`packages/playwright`](packages/playwright) | Applies a capture to a Playwright browser context, a persistent context, or a Chrome attached over CDP. |
 | [`packages/apply`](packages/apply) | Works out what a capture changes since the last one applied, and applies it to any Chrome over CDP. |

@@ -4,14 +4,22 @@ import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
-import { agentAddCommands, mcpServerName } from '@clutchbox/server/agents';
+import {
+  agentAddCommands,
+  agentPluginCommands,
+  mcpServerName,
+  pluginId,
+  pluginMcpUrl,
+  pluginServerNames,
+} from '@clutchbox/server/agents';
 import { chromeWebStoreUrl, extensionStatus } from './extension.ts';
 import { apiOriginOf, serverOrigin } from './server.ts';
 
-// `npx clutchbox`: adds a Clutchbox server to the agents on this machine that have a CLI, then opens the web app's
+// `npx clutchbox`: connects the agents on this machine that have a CLI to a Clutchbox server, then opens the web app's
 // setup, which signs the user in and covers browser sync, the steps a terminal can't do, and the Chrome Web Store
 // when this machine's Chrome lacks the extension. It holds no credentials: each agent signs in with its own consent,
-// as when the user follows the Agents page by hand.
+// as when the user follows the Agents page by hand. For the hosted service it installs the agent plugin, which brings
+// the recipes as skills too; a self-hosted server gets its MCP server added directly, since the plugin's URL is fixed.
 const defaultServer = 'https://www.clutchbox.dev';
 const help = `Usage: npx clutchbox@latest [options]
 
@@ -24,20 +32,34 @@ Options:
   -h, --help      Show this help
 `;
 
-type Agent = { name: string; bin: string; command: (mcpUrl: string) => string[]; finish: string };
+type Agent = {
+  name: string;
+  bin: string;
+  command: (mcpUrl: string) => string[];
+  finish: string;
+  plugin: { commands: string[][]; finish: string };
+};
 const agents: Agent[] = [
   {
     name: 'Claude Code',
     bin: 'claude',
     command: agentAddCommands['claude-code'],
     finish: `In Claude Code, run /mcp, choose ${mcpServerName}, then Authenticate and allow the connection`,
+    plugin: {
+      commands: agentPluginCommands['claude-code'],
+      finish: `In Claude Code, run /mcp, choose ${pluginServerNames['claude-code']}, then Authenticate and allow the connection`,
+    },
   },
-  // Codex signs in as it adds the server, and `codex mcp login` retries.
+  // Codex signs in as it adds the server, and `codex mcp login` retries. Installing the plugin doesn't sign in.
   {
     name: 'Codex',
     bin: 'codex',
     command: agentAddCommands.codex,
     finish: `Allow the connection in the page Codex opened, or if none opened, run: codex mcp login ${mcpServerName}`,
+    plugin: {
+      commands: agentPluginCommands.codex,
+      finish: `Run codex mcp login ${pluginServerNames.codex} and allow the connection`,
+    },
   },
 ];
 
@@ -50,13 +72,19 @@ function run(command: string[], options: SpawnSyncOptions = {}) {
 }
 
 const installed = (agent: Agent) => run([agent.bin, '--version'], { stdio: 'ignore' }).status === 0;
+const output = (command: string[]) => {
+  const result = run(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  return typeof result.stdout === 'string' ? result.stdout : '';
+};
+// Codex's list also shows plugins a marketplace offers, so only a line marked installed counts.
+const hasPlugin = (agent: Agent) =>
+  output([agent.bin, 'plugin', 'list'])
+    .split('\n')
+    .some(line => line.includes(pluginId) && (agent.bin === 'claude' || /\binstalled\b/.test(line)));
 
 // Set up already when any server the agent lists has our MCP URL, under our name or another, such as a Claude
 // connector that Claude Code picks up.
-function configured(agent: Agent, mcpUrl: string) {
-  const list = run([agent.bin, 'mcp', 'list'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  return typeof list.stdout === 'string' && list.stdout.includes(mcpUrl);
-}
+const configured = (agent: Agent, mcpUrl: string) => output([agent.bin, 'mcp', 'list']).includes(mcpUrl);
 
 // A machine without a display, such as a remote box an agent runs on, has nowhere to open a page.
 const hasDisplay = () => process.platform !== 'linux' || !!process.env.DISPLAY || !!process.env.WAYLAND_DISPLAY;
@@ -111,6 +139,7 @@ async function main() {
   }
   const origin = serverOrigin(values.server);
   const mcpUrl = `${await apiOriginOf(origin)}/api/mcp`;
+  const usePlugin = mcpUrl === pluginMcpUrl;
   // An agent's shell has no terminal to answer from, so no terminal means the same as --agent.
   const forAgent = values.agent || !process.stdin.isTTY;
   const yourSteps: string[] = [];
@@ -121,8 +150,17 @@ async function main() {
   say('Agents');
   const found = agents.filter(installed);
   const toAdd = found.filter(agent => {
+    if (usePlugin && hasPlugin(agent)) {
+      say(`  ✓ ${agent.name} already has the Clutchbox plugin.`);
+      return false;
+    }
     if (!configured(agent, mcpUrl)) return true;
+    // Left as it is: the plugin beside it would list the same tools twice.
     say(`  ✓ ${agent.name} is already connected.`);
+    if (usePlugin)
+      say(
+        `    For the recipes as skills, remove that server and run: ${agent.plugin.commands.map(c => c.join(' ')).join(' && ')}`,
+      );
     return false;
   });
   if (!found.length) say('  Neither Claude Code nor Codex is installed here.');
@@ -134,12 +172,14 @@ async function main() {
   }
   for (const agent of toAdd) {
     say(`  Adding Clutchbox to ${agent.name}…`);
-    // The agent's own output shows, including any sign-in link it prints.
-    const added = run(agent.command(mcpUrl), { stdio: 'inherit' });
-    if (added.status === 0) {
-      say(`  ✓ ${agent.name} is connected.`);
-      yourSteps.push(`${agent.finish}.`);
-    } else say(`  ✗ ${agent.name} failed. Run it yourself: ${agent.command(mcpUrl).join(' ')}`);
+    // The agent's own output shows, including any sign-in link it prints. Adding the marketplace fails when it's
+    // already there, so only the last command, the install, decides.
+    const commands = usePlugin ? agent.plugin.commands : [agent.command(mcpUrl)];
+    const statuses = commands.map(command => run(command, { stdio: 'inherit' }).status);
+    if (statuses.at(-1) === 0) {
+      say(`  ✓ ${agent.name} is connected${usePlugin ? ', with the recipes as skills' : ''}.`);
+      yourSteps.push(`${usePlugin ? agent.plugin.finish : agent.finish}.`);
+    } else say(`  ✗ ${agent.name} failed. Run it yourself: ${commands.map(c => c.join(' ')).join(' && ')}`);
   }
   say(`  Claude and ChatGPT on the web: follow ${origin}/app/agents`);
 

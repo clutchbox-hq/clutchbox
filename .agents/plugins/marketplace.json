@@ -1,0 +1,12 @@
+{
+  "name": "clutchbox",
+  "interface": { "displayName": "Clutchbox" },
+  "plugins": [
+    {
+      "name": "clutchbox",
+      "source": { "source": "local", "path": "./plugins/clutchbox" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

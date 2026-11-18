@@ -1,4 +1,11 @@
-import { type AgentKind, agentAddCommands, mcpServerName } from '@clutchbox/server/agents';
+import {
+  type AgentKind,
+  agentAddCommands,
+  agentPluginCommands,
+  mcpServerName,
+  pluginMcpUrl,
+  pluginServerNames,
+} from '@clutchbox/server/agents';
 import { buttonVariants } from '@clutchbox/ui/components/button';
 import { Input } from '@clutchbox/ui/components/input';
 import type { ReactNode } from 'react';
@@ -14,24 +21,42 @@ function Command({ label, command }: { label: string; command: string }) {
     </div>
   );
 }
+const commandLine = (commands: string[][]) => commands.map(command => command.join(' ')).join(' && ');
+// For the hosted service, the agent plugin brings the recipes as skills along with the MCP server; its URL is fixed,
+// so any other server gets the plain MCP commands.
+const usesPlugin = (mcpUrl: string) => mcpUrl === pluginMcpUrl;
 // Steps checked against each vendor's MCP setup docs; recheck them there before editing. The tab follows the
 // client_id URL the agent registers with (packages/server/src/agents.ts).
 export const agents: { kind: AgentKind; name: string; steps: (mcpUrl: string) => ReactNode }[] = [
   {
     kind: 'claude-code',
     name: 'Claude Code',
-    steps: mcpUrl => (
-      <ol className="grid list-decimal gap-3 pl-5 text-sm text-foreground">
-        <li>
-          In a terminal, run:
-          <Command label="Claude Code command" command={agentAddCommands['claude-code'](mcpUrl).join(' ')} />
-        </li>
-        <li>
-          In Claude Code, run <code className="text-foreground">/mcp</code>, choose {strong(mcpServerName)}, then{' '}
-          {strong('Authenticate')}, and allow the connection in your browser.
-        </li>
-      </ol>
-    ),
+    steps: mcpUrl => {
+      const plugin = usesPlugin(mcpUrl);
+      return (
+        <ol className="grid list-decimal gap-3 pl-5 text-sm text-foreground">
+          <li>
+            In a terminal, run:
+            <Command
+              label="Claude Code command"
+              command={
+                plugin
+                  ? commandLine(agentPluginCommands['claude-code'])
+                  : agentAddCommands['claude-code'](mcpUrl).join(' ')
+              }
+            />
+            {plugin && (
+              <p className="mt-2 text-muted-foreground">It adds the Clutchbox plugin, with the recipes as skills.</p>
+            )}
+          </li>
+          <li>
+            In Claude Code, run <code className="text-foreground">/mcp</code>, choose{' '}
+            {strong(plugin ? pluginServerNames['claude-code'] : mcpServerName)}, then {strong('Authenticate')}, and
+            allow the connection in your browser.
+          </li>
+        </ol>
+      );
+    },
   },
   {
     kind: 'claude',
@@ -58,18 +83,31 @@ export const agents: { kind: AgentKind; name: string; steps: (mcpUrl: string) =>
   {
     kind: 'codex',
     name: 'Codex',
-    steps: mcpUrl => (
-      <ol className="grid list-decimal gap-3 pl-5 text-sm text-foreground">
-        <li>
-          In a terminal, run:
-          <Command label="Codex command" command={agentAddCommands.codex(mcpUrl).join(' ')} />
-        </li>
-        <li>
-          Follow the browser prompt to sign in and allow the connection. If sign-in did not complete, run:
-          <Command label="Codex sign-in command" command={`codex mcp login ${mcpServerName}`} />
-        </li>
-      </ol>
-    ),
+    steps: mcpUrl =>
+      usesPlugin(mcpUrl) ? (
+        <ol className="grid list-decimal gap-3 pl-5 text-sm text-foreground">
+          <li>
+            In a terminal, run:
+            <Command label="Codex command" command={commandLine(agentPluginCommands.codex)} />
+            <p className="mt-2 text-muted-foreground">It adds the Clutchbox plugin, with the recipes as skills.</p>
+          </li>
+          <li>
+            Sign in and allow the connection:
+            <Command label="Codex sign-in command" command={`codex mcp login ${pluginServerNames.codex}`} />
+          </li>
+        </ol>
+      ) : (
+        <ol className="grid list-decimal gap-3 pl-5 text-sm text-foreground">
+          <li>
+            In a terminal, run:
+            <Command label="Codex command" command={agentAddCommands.codex(mcpUrl).join(' ')} />
+          </li>
+          <li>
+            Follow the browser prompt to sign in and allow the connection. If sign-in did not complete, run:
+            <Command label="Codex sign-in command" command={`codex mcp login ${mcpServerName}`} />
+          </li>
+        </ol>
+      ),
   },
   {
     kind: 'chatgpt',

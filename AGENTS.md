@@ -5,7 +5,7 @@
 - Clutchbox, under Apache-2.0. Every package builds, tests, and runs on its own, without any hosted service. Each package says what it is in its README or the root table; keep that current.
 - Everything here is public, history included. Commit only synthetic data: no credentials, captured cookies or profiles, customer data, or internal plans, and no links to documents or issues outside this repository.
 - Run `bun run format` before committing; `bun run lint`, `bun run typecheck`, and `bun run test` must pass. Fix a lint finding rather than suppressing it; a `biome-ignore` comment says why the rule is wrong for that line.
-- Bump the extension (`apps/extension/package.json`) when extension or capture code changes, and the CLI (`packages/cli/package.json`) when what it bundles changes (`packages/cli/src`, `packages/server/src/agents.ts`). Schemes are in CONTRIBUTING.md; a push to main publishes the CLI to npm.
+- Bump the extension (`apps/extension/package.json`) when extension or capture code changes, the CLI (`packages/cli/package.json`) when what it bundles changes (`packages/cli/src`, `packages/server/src/agents.ts`), and the plugin (both manifests in `plugins/clutchbox`) when anything in it changes, including skills generated from a changed recipe. Schemes are in CONTRIBUTING.md; a push to main publishes the CLI to npm.
 
 ## Server
 

@@ -28,6 +28,25 @@ export const agentAddCommands = {
   codex: (mcpUrl: string) => ['codex', 'mcp', 'add', mcpServerName, '--url', mcpUrl],
 } satisfies Partial<Record<AgentKind, (mcpUrl: string) => string[]>>;
 
+// The agent plugin (plugins/clutchbox in this repository, which is its own marketplace) adds the hosted service's MCP
+// server and the recipes as skills in one install. Its MCP URL is fixed, so it serves only that server; any other
+// server is added with the commands above.
+export const pluginMcpUrl = 'https://api.clutchbox.dev/api/mcp';
+export const pluginMarketplace = 'clutchbox-hq/clutchbox';
+export const pluginId = 'clutchbox@clutchbox';
+// The plugin's server, by the name each agent lists and signs in to it under.
+export const pluginServerNames = { 'claude-code': `plugin:clutchbox:${mcpServerName}`, codex: mcpServerName } as const;
+export const agentPluginCommands = {
+  'claude-code': [
+    ['claude', 'plugin', 'marketplace', 'add', pluginMarketplace],
+    ['claude', 'plugin', 'install', pluginId],
+  ],
+  codex: [
+    ['codex', 'plugin', 'marketplace', 'add', pluginMarketplace],
+    ['codex', 'plugin', 'add', pluginId],
+  ],
+} satisfies Partial<Record<AgentKind, string[][]>>;
+
 // Codex also serves one document per local callback.
 const codexCallbackClient = /^https:\/\/chatgpt\.com\/oauth\/codex\/[A-Za-z0-9_-]+\/client\.json$/;
 

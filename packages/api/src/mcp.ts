@@ -365,7 +365,7 @@ function registerComputerTools(
       description:
         "List the account's computers without opening one: computer_id, label, status, and last_used_at, most recently used first. Reopen one with computer_open and its computer_id.",
       inputSchema: z.object({}).strict(),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: security,
     },
     recorded('computer_list', async () =>

@@ -1,7 +1,8 @@
 # Recipes
 
 A recipe is a ready task for your agent on a computer signed in as you: a prompt to paste into Claude Code, Codex,
-ChatGPT, or Claude, and the steps to run it on your agent's own schedule. The web app shows them where setup ends.
+ChatGPT, or Claude, and the steps to run it on your agent's own schedule. The web app shows them where setup ends, and
+the [plugin](../plugins/clutchbox#readme) installs each as a skill.
 
 ## Write one
 
@@ -46,10 +47,10 @@ The prompt:
 - Ends with the **Ground rules** from any recipe here: only the Clutchbox computer; never type a password or a
   one-time code; never pay, buy, cancel, delete, or accept terms without the prompt or a reply saying so; stop and ask
   in a scheduled run rather than guess; and `computer_close` at the end.
-- Keeps files on a computer the person pins, named for the task (such as Paperwork), and says so.
+- Keeps files on a computer labelled for the task (such as Paperwork), reopening it by that label, and says so.
 
-Then run `bun run generate-recipes`, which checks every recipe and writes the catalog the web app imports, and
-`bun run test`.
+Then run `bun run generate-recipes`, which checks every recipe and writes the catalog the web app imports and the
+plugin's skills, bump the plugin's version, and run `bun run test`.
 
 Report a site that stops working with the
 [site issue form](https://github.com/clutchbox-hq/clutchbox/issues/new?template=site.yml).

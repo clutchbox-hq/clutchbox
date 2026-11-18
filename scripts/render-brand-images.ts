@@ -1,10 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { brandFolder, extensionIcon, render, webAppIcons } from './brand-images.ts';
+import { brandFolder, extensionIcon, pluginIcon, render, webAppIcons } from './brand-images.ts';
 
 // Renders this repository's brand images: brand/, the web app's icons (apps/web/app, by Next's file convention),
-// and the extension's (apps/extension/public/icon).
+// the extension's (apps/extension/public/icon), and the agent plugin's.
 // Rerun after changing the wordmark, headline, tagline, or colours in brand-images.ts: bun run render:brand-images
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 try {
@@ -16,6 +16,7 @@ try {
     await writeFile(`apps/web/app/${file}`, await render(browser, image));
   for (const size of [16, 32, 48, 128])
     await writeFile(`apps/extension/public/icon/${size}.png`, await render(browser, extensionIcon(size)));
+  await writeFile('plugins/clutchbox/.claude-plugin/icon.png', await render(browser, pluginIcon));
 } finally {
   await browser.close();
 }
