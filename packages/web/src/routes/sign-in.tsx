@@ -10,14 +10,20 @@ const returnable = (next: unknown) =>
   typeof next === 'string' && /^\/(join\/[A-Za-z0-9_-]{1,100}|app(\/[a-z0-9-]{1,50}){0,3})$/.test(next)
     ? next
     : undefined;
+// A recipe picked before signing up (the homepage's chips, a public recipe page), carried on to the app as ?job=<slug>
+// so setup opens with it chosen. Only a slug's characters pass, and only into the app, not an invitation.
+const withJob = (destination: string | undefined, job: unknown) =>
+  typeof job === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+){0,9}$/.test(job) && !destination?.startsWith('/join/')
+    ? `${destination ?? '/app'}?${new URLSearchParams({ job })}`
+    : destination;
 // /sign-in.
 export const signInPage = (api: PageApi) =>
   async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
     const params = await searchParams;
-    const next = returnable(params.next);
+    const next = withJob(returnable(params.next), params.job);
     // A plain visit while signed in goes to the app, or back to the invitation it came from. Any other query, such as
     // a signed OAuth login request, stays here. The session is validated so a stale cookie cannot loop with /app.
-    const plain = Object.keys(params).every(name => name === 'next');
+    const plain = Object.keys(params).every(name => name === 'next' || name === 'job');
     if (plain && (await apiGet<Me>(api, '/me')).ok) redirect(next ?? '/app');
     const search = new URLSearchParams();
     for (const [name, value] of Object.entries(params))
