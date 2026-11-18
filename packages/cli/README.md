@@ -14,9 +14,11 @@ For the hosted service, it installs the [Clutchbox plugin](../../plugins/clutchb
 | `--agent` | For an AI agent running this for you: no questions, and the steps only you can do printed for it to pass on. Without a terminal, this is the default. |
 | `-y`, `--yes` | Don't ask before changing your agents' settings. |
 
-To have your agent do it, paste this into Claude Code or Codex:
+To have your agent do it, paste this into any agent. One with a terminal, such as Claude Code or Codex, runs the command; one without, such as Claude or ChatGPT on the web, walks you through adding the connector:
 
-> Set up Clutchbox so you can work in a cloud browser signed in as me. Run `npx -y clutchbox@latest --agent`, then tell me the steps only I can do: signing in, adding the Chrome extension, and allowing the connection.
+> Set up Clutchbox so you can work on a cloud computer signed in as me. If you can run terminal commands, run `npx -y clutchbox@latest --agent`. If you can't, help me add a custom connector in this app with `https://api.clutchbox.dev/api/mcp`. Then tell me the steps only I can do.
+
+The prompt comes from `setupPrompt` in `@clutchbox/server/setup-prompt`, which the web app shows too; a test keeps this copy the same.
 
 ## Develop
 

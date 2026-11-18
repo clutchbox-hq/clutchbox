@@ -29,6 +29,7 @@
     "./log": "./src/log.ts",
     "./setup": "./src/setup.ts",
     "./agents": "./src/agents.ts",
+    "./setup-prompt": "./src/setup-prompt.ts",
     "./time-zones": "./src/time-zones.ts",
     "./tool-calls": "./src/tool-calls.ts",
     "./rfb-filter": "./src/rfb-filter.ts",
