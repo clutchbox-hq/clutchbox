@@ -255,7 +255,10 @@ describe('E2B adapter', () => {
     await expect(session.setTimeZone('../../../etc/shadow', 30_000)).rejects.toThrow('time zone');
     expect(run).not.toHaveBeenCalled();
     // The zone as root, then, as the desktop user, a restart of a Chrome on another zone within the rest of the budget.
+    // The clock stands still, so the rest is the whole budget and its third rounds to 10 seconds, never 9.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     await session.setTimeZone('America/Los_Angeles', 30_000);
+    now.mockRestore();
     expect(run.mock.calls.map(([command, options]) => [command, options?.user])).toEqual([
       [
         "test -f '/usr/share/zoneinfo/America/Los_Angeles' && ln -sf '/usr/share/zoneinfo/America/Los_Angeles' /etc/localtime && echo 'America/Los_Angeles' > /etc/timezone",
