@@ -52,13 +52,26 @@ export function isSupportedBrowser(userAgent: string, data?: UserAgentData | nul
   );
 }
 
+// Whether syncing a site covers another: the same site or a parent domain (mail.google.com under google.com).
+const covers = (added: string, site: string) => site === added || site.endsWith(`.${added}`);
+const syncs = (sync: { mode: string | null; sites: string[] }, site: string) =>
+  sync.mode === 'whole-browser' || sync.sites.some(added => covers(added, site));
+
 // A recipe's sites that the user doesn't sync yet: none with whole-browser sync, and null when the server can't read
-// what they sync. A site counts as synced when it or a parent domain was added (mail.google.com under google.com).
+// what they sync.
 export function missingSites(
   sites: readonly string[],
   sync: { mode: string | null; sites: string[]; readable: boolean },
 ): string[] | null {
   if (!sync.readable) return null;
-  if (sync.mode === 'whole-browser') return [];
-  return sites.filter(site => !sync.sites.some(added => site === added || site.endsWith(`.${added}`)));
+  return sites.filter(site => !syncs(sync, site));
+}
+
+// The browsers that sync a site, in the order given (the server sends the one that synced last first). A browser whose
+// scope the server can't read now is left out.
+export function syncingBrowsers<Browser extends { sync: { mode: string | null; sites: string[] } }>(
+  site: string,
+  browsers: readonly Browser[],
+): Browser[] {
+  return browsers.filter(browser => syncs(browser.sync, site));
 }

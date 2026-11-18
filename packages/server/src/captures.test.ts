@@ -11,7 +11,6 @@ import { bundle, cookie, siteBundle } from './capture-fixtures.ts';
 import {
   adoptSyncSettings,
   captureKey,
-  captureScope,
   captureView,
   changeSyncSettings,
   deleteCaptures,
@@ -19,6 +18,7 @@ import {
   loadLatestCapture,
   openAppliedCapture,
   openCapture,
+  profileScopes,
   sealAppliedCapture,
   sealCapture,
   syncView,
@@ -31,6 +31,8 @@ import * as schema from './schema.ts';
 
 let pg: PGlite;
 let db: Database;
+// The scope each of a member's browsers captures, the one that synced last first.
+const scopes = async (member: Member) => (await profileScopes(db, member)).map(({ scope }) => scope);
 const user = (id: string) => person(db, id);
 // The capture of the member's test browser (syncingBrowser).
 const latest = async (member: Member) => loadLatestCapture(db, member, (await syncingBrowser(db, member)).id);
@@ -152,12 +154,12 @@ describe('sealed captures', () => {
     const [after] = await db.select().from(schema.browserCaptures);
     expect(after).toMatchObject({ digest: first!.digest, sealed: first!.sealed });
     expect(after!.sealedScope).not.toBe(first!.sealedScope);
-    expect(await captureScope(db, a)).toEqual({ mode: 'sites', sites: ['github.com', 'notion.so'] });
+    expect(await scopes(a)).toEqual([{ mode: 'sites', sites: ['github.com', 'notion.so'] }]);
     // An upload received before the stored one never overwrites its scope.
     expect(
       await saveFromBrowser(db, a, siteBundle(cookies, ['github.com']), { receivedAt: new Date(Date.now() - 60_000) }),
     ).toMatchObject({ status: 'unchanged' });
-    expect(await captureScope(db, a)).toEqual({ mode: 'sites', sites: ['github.com', 'notion.so'] });
+    expect(await scopes(a)).toEqual([{ mode: 'sites', sites: ['github.com', 'notion.so'] }]);
     // The scope is bound to its membership like the capture.
     await saveFromBrowser(db, b, siteBundle(cookies, ['github.com']));
     const [sealedB] = await db
@@ -169,9 +171,9 @@ describe('sealed captures', () => {
       .set({ sealedScope: sealedB!.sealedScope })
       .where(eq(schema.browserCaptures.membershipId, a.membershipId));
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await captureScope(db, a)).toBe('unreadable');
+    expect(await scopes(a)).toEqual(['unreadable']);
     await deleteCaptures(db, a);
-    expect(await captureScope(db, a)).toBeNull();
+    expect(await scopes(a)).toEqual([]);
     expect(
       await db.select().from(schema.browserCaptures).where(eq(schema.browserCaptures.membershipId, a.membershipId)),
     ).toHaveLength(0);
@@ -376,7 +378,7 @@ describe('sync settings', () => {
     const [after] = await db.select().from(schema.browserCaptures);
     expect(after!.digest).not.toBe(before!.digest);
     expect(after!.uploadedAt).toEqual(before!.uploadedAt);
-    expect(await captureScope(db, a)).toEqual({ mode: 'sites', sites: ['github.com'] });
+    expect(await scopes(a)).toEqual([{ mode: 'sites', sites: ['github.com'] }]);
     expect((await latest(a))!.capture.cookies.map(each => each.domain)).toEqual(['github.com', 'gist.github.com']);
     // An exclusion inside an added site drops its cookies too.
     await changeSyncSettings(db, a, { excludedDomains: ['gist.github.com'] }, serverSite);
@@ -388,7 +390,7 @@ describe('sync settings', () => {
       cookieCount: 1,
       settings: { sites: ['github.com'], excludedDomains: ['gist.github.com'], paused: false },
     });
-    expect(await captureScope(db, a)).toEqual({ mode: 'sites', sites: ['github.com'] });
+    expect(await scopes(a)).toEqual([{ mode: 'sites', sites: ['github.com'] }]);
     // Every browser's capture is narrowed by the member's settings.
     const other = await syncingBrowser(db, a, { name: 'other' });
     await saveFromBrowser(db, a, bundle(cookies), { browser: other.id });

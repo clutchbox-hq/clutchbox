@@ -56,7 +56,18 @@ export type SetupView = {
   setUpAt: string | null;
   noticeOpen: boolean;
   items: { browserSync: boolean; agents: boolean; computer: boolean };
-  sync: { mode: 'sites' | 'whole-browser' | null; sites: string[]; readable: boolean };
+  // What the member's browsers sync together.
+  sync: SyncScope;
+  // Each browser syncing to the member, the one that synced last first; browser and platform are null when unknown.
+  browsers: SyncingBrowser[];
+};
+// What a browser syncs; readable is false when the server can't open it now, and mode and sites are then empty.
+export type SyncScope = { mode: 'sites' | 'whole-browser' | null; sites: string[]; readable: boolean };
+export type SyncingBrowser = Pick<ConnectedBrowser, 'browser' | 'platform'> & {
+  id: string;
+  lastSyncedAt: string;
+  default: boolean;
+  sync: SyncScope;
 };
 // A browser connected with OAuth; browser and platform are null when its User-Agent did not say.
 export type Browser = Omit<ConnectedBrowser, 'connectedAt' | 'lastSyncedAt'> & {

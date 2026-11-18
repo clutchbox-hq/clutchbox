@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSupportedBrowser, missingSites } from './setup.ts';
+import { isSupportedBrowser, missingSites, syncingBrowsers } from './setup.ts';
 
 const mac =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -68,5 +68,28 @@ describe('missingSites', () => {
   it('needs nothing with whole-browser sync, and is unknown when the sites are unreadable', () => {
     expect(missingSites(['x.com'], synced([], 'whole-browser'))).toEqual([]);
     expect(missingSites(['x.com'], { mode: null, sites: [], readable: false })).toBeNull();
+  });
+});
+
+describe('syncingBrowsers', () => {
+  const browser = (id: string, sites: string[], mode: string | null = 'sites', readable = true) => ({
+    id,
+    sync: { mode, sites, readable },
+  });
+  const laptop = browser('laptop', ['x.com', 'google.com']);
+  const desktop = browser('desktop', ['mail.google.com']);
+  const everything = browser('everything', [], 'whole-browser');
+  const unreadable = browser('unreadable', [], null, false);
+  const ids = (site: string, browsers: ReturnType<typeof browser>[]) =>
+    syncingBrowsers(site, browsers).map(({ id }) => id);
+  it('lists every browser covering a site, in order, counting a parent domain and whole-browser sync', () => {
+    expect(ids('mail.google.com', [laptop, desktop, everything])).toEqual(['laptop', 'desktop', 'everything']);
+    expect(ids('google.com', [laptop, desktop])).toEqual(['laptop']);
+    expect(ids('x.com', [desktop, laptop])).toEqual(['laptop']);
+    expect(ids('notx.com', [laptop, desktop])).toEqual([]);
+  });
+  it('leaves out a browser whose scope is unreadable', () => {
+    expect(ids('x.com', [unreadable, laptop])).toEqual(['laptop']);
+    expect(ids('x.com', [unreadable])).toEqual([]);
   });
 });

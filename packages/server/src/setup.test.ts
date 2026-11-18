@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { saveFromBrowser } from './browser-fixtures.ts';
+import { EDGE_ON_WINDOWS, saveFromBrowser, syncingBrowser } from './browser-fixtures.ts';
 import { bundle, cookie, siteBundle } from './capture-fixtures.ts';
 import type { Database } from './database.ts';
 import { databaseSchema } from './database-schema.ts';
@@ -133,6 +133,7 @@ describe('setup view', () => {
       noticeOpen: false,
       items: { browserSync: false, agents: false, computer: false },
       sync: { mode: null, sites: [], readable: true },
+      browsers: [],
     };
     expect(await setupView(db, a)).toEqual(empty);
     // Agreed, but no site added yet.
@@ -196,6 +197,62 @@ describe('setup view', () => {
     expect(errors).not.toHaveBeenCalled();
     expect(await saveFromBrowser(db, a, capture)).toMatchObject({ status: 'unchanged' });
     expect((await setupView(db, a)).sync).toEqual({ mode: 'sites', sites: ['github.com'], readable: true });
+  });
+  it("lists what each of the member's browsers syncs, the one that synced last first, and combines them", async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const a = await user('a');
+    const laptop = await syncingBrowser(db, a);
+    const desktop = await syncingBrowser(db, a, { name: 'desktop', userAgent: EDGE_ON_WINDOWS });
+    const earlier = new Date(Date.now() - 60_000);
+    await saveFromBrowser(db, a, siteBundle([], ['github.com', 'x.com']), { browser: laptop.id, receivedAt: earlier });
+    await saveFromBrowser(db, a, siteBundle([], ['google.com', 'x.com']), { browser: desktop.id });
+    const view = await setupView(db, a);
+    expect(view.browsers).toEqual([
+      {
+        id: desktop.publicId,
+        browser: 'edge',
+        platform: 'windows',
+        lastSyncedAt: expect.any(String),
+        default: true,
+        sync: { mode: 'sites', sites: ['google.com', 'x.com'], readable: true },
+      },
+      {
+        id: laptop.publicId,
+        browser: 'chrome',
+        platform: 'macos',
+        lastSyncedAt: earlier.toISOString(),
+        default: false,
+        sync: { mode: 'sites', sites: ['github.com', 'x.com'], readable: true },
+      },
+    ]);
+    expect(view.sync).toEqual({ mode: 'sites', sites: ['google.com', 'x.com', 'github.com'], readable: true });
+    // Another member's browsers never show here.
+    const b = await user('b');
+    await saveFromBrowser(db, b, bundle([cookie()]));
+    expect((await setupView(db, a)).browsers.map(({ id }) => id)).toEqual([desktop.publicId, laptop.publicId]);
+    // One browser syncing everything makes the whole browser synced.
+    await saveFromBrowser(db, a, bundle([cookie()]), { browser: laptop.id });
+    expect((await setupView(db, a)).sync).toEqual({ mode: 'whole-browser', sites: [], readable: true });
+    // One browser's scope unreadable: the others still list theirs, and together they are unreadable.
+    await db
+      .update(schema.browserCaptures)
+      .set({ sealedScope: null })
+      .where(eq(schema.browserCaptures.connectedBrowserId, laptop.id));
+    expect(await setupView(db, a)).toMatchObject({
+      items: { browserSync: true },
+      sync: { mode: 'sites', sites: ['google.com', 'x.com'], readable: false },
+      browsers: [
+        { id: laptop.publicId, sync: { mode: null, sites: [], readable: false } },
+        { id: desktop.publicId, sync: { mode: 'sites', sites: ['google.com', 'x.com'], readable: true } },
+      ],
+    });
+    // A browser removed from the member stops counting.
+    await db
+      .update(schema.browserMemberships)
+      .set({ removedAt: new Date() })
+      .where(eq(schema.browserMemberships.connectedBrowserId, laptop.id));
+    expect((await setupView(db, a)).sync).toEqual({ mode: 'sites', sites: ['google.com', 'x.com'], readable: true });
+    expect(errors).not.toHaveBeenCalled();
   });
   it("keeps one person's setup apart in each of their memberships", async () => {
     const a = await user('a');

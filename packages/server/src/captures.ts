@@ -342,16 +342,17 @@ export type Profile = {
 };
 // A profile as it leaves the server.
 export const profileView = ({ browserId: _browserId, ...view }: Profile) => view;
-// The member's profiles, the default first, then by when each last synced.
-export async function listProfiles(db: Pick<Database, 'select'>, member: Owner): Promise<Profile[]> {
+// The member's profiles, the default first, then by when each last synced, each with its sealed scope.
+function profileRows(db: Pick<Database, 'select'>, member: Owner) {
   const browsers = schema.connectedBrowsers;
-  const rows = await db
+  return db
     .select({
       browserId: browsers.id,
       id: browsers.publicId,
       browser: browsers.browser,
       platform: browsers.platform,
       lastSyncedAt: captures.uploadedAt,
+      sealedScope: captures.sealedScope,
     })
     .from(captures)
     .innerJoin(browsers, eq(browsers.id, captures.connectedBrowserId))
@@ -364,7 +365,32 @@ export async function listProfiles(db: Pick<Database, 'select'>, member: Owner):
     )
     .where(and(ownRow(captures, member), isNull(browsers.disconnectedAt), isNull(schema.browserMemberships.removedAt)))
     .orderBy(desc(captures.uploadedAt), desc(captures.id));
-  return rows.map((row, index) => ({ ...row, lastSyncedAt: row.lastSyncedAt.toISOString(), default: index === 0 }));
+}
+export async function listProfiles(db: Pick<Database, 'select'>, member: Owner): Promise<Profile[]> {
+  return (await profileRows(db, member)).map(({ sealedScope: _sealedScope, ...row }, index) => ({
+    ...row,
+    lastSyncedAt: row.lastSyncedAt.toISOString(),
+    default: index === 0,
+  }));
+}
+// Each profile with the scope its browser captures: 'unreadable' when it cannot be opened (no key, or a decrypt
+// failure). Browsers can capture different sites, so each has its own. Only sealed_scope is read, never the cookies, so
+// a row stored before sealed_scope existed is also 'unreadable' until the extension's next upload fills it.
+export async function profileScopes(
+  db: Pick<Database, 'select'>,
+  member: Owner,
+): Promise<(Profile & { scope: CaptureScope | 'unreadable' })[]> {
+  const key = captureKey();
+  return (await profileRows(db, member)).map(({ sealedScope, ...row }, index) => {
+    let scope: CaptureScope | 'unreadable' = 'unreadable';
+    if (sealedScope)
+      try {
+        scope = openScope(sealedScope, member, key);
+      } catch (error) {
+        logError('capture scope', error);
+      }
+    return { ...row, lastSyncedAt: row.lastSyncedAt.toISOString(), default: index === 0, scope };
+  });
 }
 
 // The default profile's capture: the one uploaded last.
@@ -387,27 +413,6 @@ export async function captureView(db: Database, member: Owner) {
         cookieCount: row.cookieCount,
       }
     : null;
-}
-
-// The default profile's capture scope: null without a capture, 'unreadable' when it cannot be opened (no key, or a
-// decrypt failure). Every browser captures the sites the member's sync settings name, so one scope stands for all. Only
-// sealed_scope is read, never the cookies, so a row stored before sealed_scope existed is also 'unreadable' until the
-// extension's next upload fills it.
-export async function captureScope(db: Database, member: Owner): Promise<CaptureScope | null | 'unreadable'> {
-  const [row] = await db
-    .select({ sealedScope: captures.sealedScope })
-    .from(captures)
-    .where(ownRow(captures, member))
-    .orderBy(...latestFirst)
-    .limit(1);
-  if (!row) return null;
-  if (!row.sealedScope) return 'unreadable';
-  try {
-    return openScope(row.sealedScope, member);
-  } catch (error) {
-    logError('capture scope', error);
-    return 'unreadable';
-  }
 }
 
 // One browser's capture in the member: its digest, or the whole capture opened.

@@ -417,6 +417,7 @@ describe('API routes', () => {
       noticeOpen: false,
       items: { browserSync: false, agents: false, computer: false },
       sync: { mode: null, sites: [], readable: true },
+      browsers: [],
     });
     // Agree with no site yet: synced, but nothing to list and the step is not done.
     const ta = await browser(a);

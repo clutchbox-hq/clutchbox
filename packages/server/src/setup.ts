@@ -1,6 +1,6 @@
 import 'server-only';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { captureScope } from './captures.ts';
+import { type CaptureScope, profileScopes, profileView } from './captures.ts';
 import type { Database } from './database.ts';
 import { logError, logSetupEvent } from './log.ts';
 import { earliestLiveConsentAt, hasLiveGrant } from './mcp.ts';
@@ -108,24 +108,41 @@ export async function closeSetupNotice(db: Database, member: Member) {
     );
 }
 
+// What one browser syncs, or what all of them do together. mode and sites are empty when nothing is readable;
+// readable is false when the server cannot open a browser's scope now (no key, a decrypt failure, or a capture stored
+// before scopes were sealed apart), though that browser did sync.
+type SyncScope = { mode: CaptureScope['mode'] | null; sites: string[]; readable: boolean };
+const syncScope = (scope: CaptureScope | 'unreadable'): SyncScope =>
+  scope === 'unreadable' ? { mode: null, sites: [], readable: false } : { ...scope, readable: true };
+// The browsers' scopes together: whole-browser if any is, else every added site once. Unreadable unless all are.
+function combined(scopes: SyncScope[]): SyncScope {
+  const readable = scopes.filter(scope => scope.readable);
+  const mode = readable.some(scope => scope.mode === 'whole-browser') ? 'whole-browser' : readable[0] ? 'sites' : null;
+  const sites = mode === 'sites' ? [...new Set(readable.flatMap(scope => scope.sites))] : [];
+  return { mode, sites, readable: readable.length === scopes.length };
+}
+
 export async function setupView(db: Database, member: Member) {
-  const [[row], live, scope] = await Promise.all([
+  const [[row], live, profiles] = await Promise.all([
     db.select().from(schema.setups).where(eq(schema.setups.membershipId, member.membershipId)),
     hasLiveGrant(db, member.userId),
-    captureScope(db, member),
+    profileScopes(db, member),
   ]);
   // Covers a grant whose agent has not called yet.
   if (live) await noteAgentConnected(db, member);
-  const sync = scope === 'unreadable' ? null : scope;
+  // Each browser syncing to the member, the one that synced last first, with what it syncs.
+  const browsers = profiles.map(({ scope, ...profile }) => ({ ...profileView(profile), sync: syncScope(scope) }));
+  const sync = combined(browsers.map(browser => browser.sync));
   return {
     setUpAt: row?.setUpAt?.toISOString() ?? null,
     noticeOpen: !!row?.setUpAt && !row.noticeClosedAt,
     items: {
       // An unreadable capture still means the user synced; the server just cannot list it now.
-      browserSync: scope === 'unreadable' || (!!sync && (sync.mode === 'whole-browser' || sync.sites.length > 0)),
+      browserSync: !sync.readable || sync.mode === 'whole-browser' || sync.sites.length > 0,
       agents: live,
       computer: !!row?.setUpAt,
     },
-    sync: { mode: sync?.mode ?? null, sites: sync?.sites ?? [], readable: scope !== 'unreadable' },
+    sync,
+    browsers,
   };
 }
