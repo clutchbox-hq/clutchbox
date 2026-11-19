@@ -1,7 +1,11 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { siteOfHost } from '@clutchbox/capture';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type CdpCookie, cookieParamOf, partitionCookies } from './chrome.ts';
-import { applyInSandbox, payloads, SANDBOX_CORE, type SandboxShell } from './sandbox.ts';
+import { applyInSandbox, payloads, SANDBOX_CORE, type SandboxShell, START_CHROME } from './sandbox.ts';
 import { capture, cookie, localSandbox } from './sandbox-fixtures.ts';
 
 const held: CdpCookie = {
@@ -110,5 +114,12 @@ describe('applying in a sandbox', () => {
     await expect(applyInSandbox(shell, capture([cookie()]))).rejects.toMatchObject({ code: 'no_chrome' });
     const leaky: SandboxShell = { run: async () => ({ exitCode: 1, stdout: 'sid=signed-in' }), maxStdinBytes: 1 };
     await expect(applyInSandbox(leaky, capture([cookie()]))).rejects.toMatchObject({ code: 'command_failed' });
+  });
+  it('says no_chrome when the browser it was told to use is missing, rather than waiting for one to start', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'sandbox-'));
+    const env = { ...process.env, HOME: home, CLUTCHBOX_CHROME: path.join(home, 'missing', 'chrome') };
+    const started = spawnSync('sh', ['-c', START_CHROME, 'sh', '1', ''], { env, encoding: 'utf8', timeout: 10_000 });
+    expect(started.status).toBe(1);
+    expect(started.stdout.trim()).toBe('{"error":"no_chrome"}');
   });
 });

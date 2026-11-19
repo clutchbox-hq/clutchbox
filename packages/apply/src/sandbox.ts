@@ -96,7 +96,7 @@ for candidate in google-chrome google-chrome-stable chromium chromium-browser; d
   [ -n "$bin" ] && break
   command -v "$candidate" >/dev/null 2>&1 && bin="$candidate"
 done
-[ -n "$bin" ] || { echo '{"error":"no_chrome"}'; exit 1; }
+[ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1 || { echo '{"error":"no_chrome"}'; exit 1; }
 if [ -z "$display" ]; then x=$(ls /tmp/.X11-unix 2>/dev/null | sed -n 's/^X\([0-9][0-9]*\)$/\1/p' | head -n 1); [ -n "$x" ] && display=":$x"; fi
 flags="--remote-debugging-port=$port --remote-debugging-address=127.0.0.1 --user-data-dir=$HOME/.config/clutchbox-chrome --no-first-run --no-default-browser-check"
 [ "$(id -u)" = 0 ] && flags="$flags --no-sandbox"
