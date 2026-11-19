@@ -33,13 +33,18 @@ describe('providerFromConfig', () => {
     expect(e2bComputerProvider).toHaveBeenLastCalledWith(TEMPLATE);
   });
 
-  it('runs computers on Boat when its key is set, before E2B', () => {
+  it('runs computers on Boat when only its key is set, and on E2B while both are', () => {
     vi.mocked(e2bComputerProvider).mockClear();
     const both = readConfig({ ...env, E2B_API_KEY: 'synthetic-only', BOAT_API_KEY: 'synthetic-only' });
-    expect(providerFromConfig(both)).toHaveProperty('name', 'boat');
+    expect(providerFromConfig(both)).toHaveProperty('revision');
+    expect(e2bComputerProvider).toHaveBeenCalled();
+    expect(boatComputerProvider).not.toHaveBeenCalled();
+    const boat = readConfig({ ...env, E2B_API_KEY: '', BOAT_API_KEY: 'synthetic-only' });
+    expect(providerFromConfig(boat)).toHaveProperty('name', 'boat');
     expect(boatComputerProvider).toHaveBeenLastCalledWith({ apiKey: 'synthetic-only', snapshot: SNAPSHOT });
-    expect(e2bComputerProvider).not.toHaveBeenCalled();
-    providerFromConfig(readConfig({ ...env, BOAT_API_KEY: 'synthetic-only', BOAT_COMPUTER_SNAPSHOT: 'ours' }));
+    providerFromConfig(
+      readConfig({ ...env, E2B_API_KEY: '', BOAT_API_KEY: 'synthetic-only', BOAT_COMPUTER_SNAPSHOT: 'ours' }),
+    );
     expect(boatComputerProvider).toHaveBeenLastCalledWith({ apiKey: 'synthetic-only', snapshot: 'ours' });
   });
   it('uses the in-memory fake without a key outside production, where it is required', () => {

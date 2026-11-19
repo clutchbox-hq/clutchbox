@@ -1,6 +1,6 @@
 # Boat computers
 
-Clutchbox computers on [Boat](https://boat.dev): the server picks this provider when `BOAT_API_KEY` is set. Each computer is a Boat sandbox, named by the computer's ID, made from the saved snapshot `clutchbox-computer` (`BOAT_COMPUTER_SNAPSHOT` for another name), which `bun run build-template` builds on your account. Without the snapshot, a computer starts from Boat's default sandbox and installs what the snapshot holds (`src/setup.ts`) first.
+Clutchbox computers on [Boat](https://boat.dev): the server picks this provider when `BOAT_API_KEY` is set and `E2B_API_KEY` is not. Each computer is a Boat sandbox, named by the computer's ID, made from the saved snapshot `clutchbox-computer` (`BOAT_COMPUTER_SNAPSHOT` for another name), which `bun run build-template` builds on your account. Without the snapshot, a computer starts from Boat's default sandbox and installs what the snapshot holds (`src/setup.ts`) first.
 
 The desktop, Chrome, sync, live view, and the CDP bridge are the E2B package's (`desktopSession`), run through Boat's command and file APIs (`boatMachine`). Where Boat differs:
 

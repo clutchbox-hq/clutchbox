@@ -69,7 +69,7 @@ The build makes every size. To build and use another name, set `E2B_COMPUTER_TEM
 
 ## Computers on Boat
 
-Set `BOAT_API_KEY` instead of `E2B_API_KEY` to run computers on your [Boat](https://boat.dev) account (with both set, Boat runs them). Build the snapshot new computers start from with `BOAT_API_KEY=… bun run --cwd packages/boat build-template`; until it exists (Boat's trial saves none), each new computer installs it first, which adds 10 to 20 seconds. Boat has no pause that keeps memory: a pause quits Chrome, so open tabs close and session cookies come back with the next open's full apply, and a computer stopped for 14 days loses its disk. See [`packages/boat`](../../packages/boat).
+Set `BOAT_API_KEY` instead of `E2B_API_KEY` to run computers on your [Boat](https://boat.dev) account (with both set, E2B runs them; computers can't move between the two, so delete them before you switch). Build the snapshot new computers start from with `BOAT_API_KEY=… bun run --cwd packages/boat build-template`; until it exists (Boat's trial saves none), each new computer installs it first, which adds 10 to 20 seconds. Boat has no pause that keeps memory: a pause quits Chrome, so open tabs close and session cookies come back with the next open's full apply, and a computer stopped for 14 days loses its disk. See [`packages/boat`](../../packages/boat).
 
 ## Without Docker
 
