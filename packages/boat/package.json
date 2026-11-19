@@ -1,0 +1,42 @@
+{
+  "name": "@clutchbox/boat",
+  "version": "0.1.0",
+  "description": "Computers for AI agents on Boat: a Linux desktop with Chrome that stays signed in to your sites, on a Boat sandbox.",
+  "keywords": [
+    "boat",
+    "sandbox",
+    "computer-use",
+    "chrome",
+    "ai-agents",
+    "logged-in"
+  ],
+  "homepage": "https://www.clutchbox.dev",
+  "bugs": "https://github.com/clutchbox-hq/clutchbox/issues",
+  "author": "Clutchbox",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clutchbox-hq/clutchbox.git",
+    "directory": "packages/boat"
+  },
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./timing": "./src/timing.ts",
+    "./template": "./src/template.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build-template": "node scripts/build-template.ts"
+  },
+  "dependencies": {
+    "@boatdev/sdk": "1.12.1",
+    "@clutchbox/apply": "workspace:*",
+    "@clutchbox/computer": "workspace:*",
+    "@clutchbox/e2b": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
+  }
+}

@@ -157,7 +157,37 @@ export type Providers = Pick<Computers, 'provider' | 'accounts'>;
 // organization first.
 export async function providerFor({ provider, accounts }: Providers, db: Database, organizationId: string) {
   const own = await accounts?.(db, organizationId);
-  return own ? { provider: own, ownAccount: true } : { provider, ownAccount: false };
+  return own
+    ? { provider: forgettingReboots(own, db), ownAccount: true }
+    : { provider: forgettingReboots(provider, db), ownAccount: false };
+}
+// A provider with no pause that keeps memory (Boat) reboots a computer that stayed stopped, which loses the session
+// cookies the last apply set. The connect that finds it rebooted forgets what its profiles had applied, so the next
+// apply replaces every synced site.
+function forgettingReboots(provider: ComputerProvider, db: Database): ComputerProvider {
+  return {
+    ...provider,
+    get revision() {
+      return provider.revision;
+    },
+    async connect(sandboxId, timeoutMs) {
+      const session = await provider.connect(sandboxId, timeoutMs);
+      if (session.rebooted)
+        await db
+          .update(schema.computerProfiles)
+          .set({ appliedCaptureDigest: null, appliedCapture: null })
+          .where(
+            inArray(
+              schema.computerProfiles.computerId,
+              db
+                .select({ id: schema.computers.id })
+                .from(schema.computers)
+                .where(eq(schema.computers.sandboxId, sandboxId)),
+            ),
+          );
+      return session;
+    },
+  };
 }
 // Where a computer runs, as people and agents are told and its time is recorded: the organization's own provider
 // account, or the deployment's.

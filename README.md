@@ -120,6 +120,7 @@ Then sign in at <http://localhost:3000>, with the link from Mailpit at <http://l
 | [`packages/capture`](packages/capture) | The capture format and sync contract: cookies with full metadata, sites, exclusions, and settings. |
 | [`packages/computer`](packages/computer) | The interface a computer provider implements: create, pause, resume, screenshot, act, exec, and CDP. |
 | [`packages/e2b`](packages/e2b) | Computers for agents on [E2B](https://e2b.dev): a Linux desktop sandbox with Chrome, kept signed in. |
+| [`packages/boat`](packages/boat) | The same computers on [Boat](https://boat.dev), through the E2B package's desktop session. |
 | [`packages/ui`](packages/ui) | The web app's design system: shadcn components on Base UI, the theme, and the fonts. |
 | [`packages/server`](packages/server) | The web app's server: accounts, browser sync, captures, computers, MCP grants, and live view, on Postgres. |
 | [`packages/api`](packages/api) | The web app's HTTP API, the MCP server agents connect to, and the live-view and CDP relays. |

@@ -16,7 +16,7 @@
     },
     "apps/extension": {
       "name": "@clutchbox/extension",
-      "version": "26.1105.0",
+      "version": "26.1118.0",
       "dependencies": {
         "@base-ui/react": "1.9.0",
         "@clutchbox/capture": "workspace:*",
@@ -99,6 +99,19 @@
         "playwright-core": "1.64.0",
       },
     },
+    "packages/boat": {
+      "name": "@clutchbox/boat",
+      "version": "0.1.0",
+      "dependencies": {
+        "@boatdev/sdk": "1.12.1",
+        "@clutchbox/apply": "workspace:*",
+        "@clutchbox/computer": "workspace:*",
+        "@clutchbox/e2b": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "24.19.2",
+      },
+    },
     "packages/capture": {
       "name": "@clutchbox/capture",
       "version": "0.2.0",
@@ -108,7 +121,7 @@
     },
     "packages/cli": {
       "name": "clutchbox",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "bin": {
         "clutchbox": "dist/clutchbox.js",
       },
@@ -239,6 +252,7 @@
         "@better-auth/oauth-provider": "1.7.11",
         "@better-auth/utils": "0.5.0",
         "@clutchbox/apply": "workspace:*",
+        "@clutchbox/boat": "workspace:*",
         "@clutchbox/capture": "workspace:*",
         "@clutchbox/computer": "workspace:*",
         "@clutchbox/e2b": "workspace:*",
@@ -408,6 +422,8 @@
     "@clutchbox/app": ["@clutchbox/app@workspace:apps/web"],
 
     "@clutchbox/apply": ["@clutchbox/apply@workspace:packages/apply"],
+
+    "@clutchbox/boat": ["@clutchbox/boat@workspace:packages/boat"],
 
     "@clutchbox/capture": ["@clutchbox/capture@workspace:packages/capture"],
 

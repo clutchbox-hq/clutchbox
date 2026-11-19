@@ -13,7 +13,7 @@
 - Lean on Better Auth for anything auth-shaped (sign-in, sessions, OAuth, organizations, members, invitations, roles, API keys): its plugins and Better Auth UI, unless there is a clear reason not to, stated in a comment where our code takes over.
 - Shape tables and migrations by `packages/server/README.md`, Data conventions.
 - Give every API route and server service an integration test (Vitest, in process, with PGlite and real Better Auth) covering session, origin, validation, status codes, ownership, and failure paths, in the same change. Migrate one PGlite template per file in `beforeAll` and give each test `await template.clone()`. Unit-test only dense pure logic; test behavior, not configuration, constants, snapshots, or display-only UI.
-- Keep timings for computers, computer sessions, and MCP tool calls in `packages/server/src/computer-timing.ts`, and the E2B adapter's command timings in `packages/e2b/src/timing.ts`. Each gets a comment saying what it bounds and how its value was chosen; derive related values from each other.
+- Keep timings for computers, computer sessions, and MCP tool calls in `packages/server/src/computer-timing.ts`, the E2B adapter's command timings in `packages/e2b/src/timing.ts`, and Boat's in `packages/boat/src/timing.ts`. Each gets a comment saying what it bounds and how its value was chosen; derive related values from each other.
 - Existing computers never get a new template. Put a file computers need in `HELPERS` (`packages/e2b/src/index.ts`), and Chrome's flags in `ENSURE_CHROME`, so the refresh on `computer_open` delivers it. A change to installed packages or the OS reaches only new computers (existing ones by a reset), so say so in the commit.
 
 ## Web and extension

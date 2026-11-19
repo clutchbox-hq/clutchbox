@@ -32,6 +32,8 @@ type FakeSandbox = {
   cookies: CdpCookieParam[];
   profiles: Record<string, CdpCookieParam[]>;
   paused: boolean;
+  // Rebooted while paused, as Boat does after a stop: the next connect says so (rebooted).
+  rebooted?: boolean;
   // Created before computers were private, so live view refuses it.
   public?: boolean;
   timeZone?: string;
@@ -149,8 +151,11 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
       const sandbox = sandboxes.get(sandboxId);
       if (!sandbox) throw new Error('sandbox not found');
       sandbox.paused = false;
+      const rebooted = sandbox.rebooted ?? false;
+      sandbox.rebooted = false;
       return {
         isPrivate: !sandbox.public,
+        rebooted,
         screenshot: async () => fakePng(sandbox.screen),
         act: async action => {
           sandbox.actions.push(action);
@@ -281,6 +286,12 @@ export function fakeComputerProvider({ account = '' }: { account?: string } = {}
     provider,
     sandboxes,
     calls,
+    // A reboot, as a paused Boat computer gets: Chrome's session cookies, which live in memory, are gone.
+    reboot: (sandboxId: string) => {
+      const sandbox = sandboxes.get(sandboxId)!;
+      sandbox.rebooted = true;
+      sandbox.cookies = sandbox.cookies.filter(cookie => cookie.expires !== undefined && cookie.expires > 0);
+    },
     slowCreate: (ms: number) => {
       createDelayMs = ms;
     },

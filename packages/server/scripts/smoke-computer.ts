@@ -1,4 +1,5 @@
-// Live check of the E2B provider against a disposable computer; always kills it. Its live view checks need the helpers
+// Live check of the E2B provider, or Boat's with SMOKE_PROVIDER=boat (requires BOAT_API_KEY), against a disposable
+// computer; always kills it. Its live view checks need the helpers
 // of this checkout: a template built from them (CI), or SMOKE_REFRESH=1, which refreshes the computer first.
 // Usage: bun run computer:smoke [output-dir]   (requires E2B_API_KEY or the E2B CLI login)
 // SMOKE_SYNC=1 also checks cookie sync with synthetic cookies only, and switching Chrome between profiles, which needs
@@ -9,6 +10,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { toCdpCookie } from '@clutchbox/apply';
+import { boatComputerProvider } from '@clutchbox/boat';
 import { DEFAULT_SCREEN, FIRST_PROFILE, pngSize, SCREEN_NAMES, SCREENS } from '@clutchbox/computer';
 import { e2bComputerProvider, HELPER_DIR, REVISION, REVISION_FILE } from '@clutchbox/e2b';
 import { WebSocket } from 'ws';
@@ -29,7 +31,7 @@ if (!process.env.E2B_API_KEY) {
 }
 const out = process.argv[2] ?? 'results';
 await mkdir(out, { recursive: true });
-const provider = e2bComputerProvider();
+const provider = process.env.SMOKE_PROVIDER === 'boat' ? boatComputerProvider() : e2bComputerProvider();
 const timings: Record<string, number> = {};
 const timed = async <T>(name: string, work: () => Promise<T>) => {
   const start = Date.now();
@@ -428,7 +430,8 @@ const expected: Record<string, unknown> = {
     SCREEN_ORDER.map(screen => [screen, { set: true, screenshot: screen, chromeFills: true }]),
   ),
   returnNavigates: 'https://example.com/#return',
-  statePreservedAfterResume: 'https://example.com/#return',
+  // Boat has no pause that keeps memory: a pause quits Chrome, so its cookies reach disk, and the page is gone.
+  statePreservedAfterResume: process.env.SMOKE_PROVIDER === 'boat' ? undefined : 'https://example.com/#return',
   fileAfterResume: 'a,b\n1,2\n',
   tabsAfterClose: ['about:blank'],
   killed: true,

@@ -55,6 +55,44 @@ export const TEMPLATE = 'agent-computers-desktop';
 // Each size's template: the smallest ('1x', 2 vCPU · 4 GB) keeps the bare name, and a larger size adds its key
 // (template.ts builds them all).
 export const templateFor = (template: string, size: ComputerSize) => (size === '1x' ? template : `${template}-${size}`);
+// What a computer's session needs from the machine it runs on, whichever provider runs it (desktopSession): E2B here,
+// Boat in packages/boat. Commands run as the desktop's `user` unless `root` is asked for, with DISPLAY=:0 when
+// `display` is set; a non-zero exit throws CommandExit, and a command cut off at timeoutMs throws CommandTimeout.
+// Files are written and removed as `user`. `endpoint` says how the server reaches a port: a WebSocket URL and the
+// headers carrying the provider's traffic token, which never leave the server; null when the machine accepts public
+// traffic.
+export interface Machine {
+  run(
+    command: string,
+    options: { user?: 'user' | 'root'; display?: boolean; timeoutMs: number },
+  ): Promise<{ stdout: string; stderr: string }>;
+  write(files: { path: string; data: string | Uint8Array<ArrayBuffer> }[], timeoutMs: number): Promise<void>;
+  remove(path: string, timeoutMs: number): Promise<void>;
+  screenshot(): Promise<Uint8Array>;
+  // Types text on the desktop, as keystrokes.
+  type(text: string): Promise<void>;
+  setTimeout(timeoutMs: number): Promise<void>;
+  endpoint(port: number): Promise<{ url: string; headers: Record<string, string> } | null>;
+  readonly isPrivate: boolean;
+}
+export class CommandExit extends Error {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  constructor(exitCode: number, stdout: string, stderr: string) {
+    super(`command exited ${exitCode}`);
+    this.name = 'CommandExit';
+    this.exitCode = exitCode;
+    this.stdout = stdout;
+    this.stderr = stderr;
+  }
+}
+export class CommandTimeout extends Error {
+  constructor() {
+    super('command timed out');
+    this.name = 'CommandTimeout';
+  }
+}
 const OUTPUT_LIMIT = 32_000;
 const clip = (text: string) => (text.length > OUTPUT_LIMIT ? text.slice(0, OUTPUT_LIMIT) : text);
 const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
@@ -102,7 +140,7 @@ exit 1
 // writes its cookie store to disk; a signal can leave cookies set in the last half minute unwritten), or sent SIGTERM
 // when that is not answered, and SIGKILL once $2 seconds pass. Exits 1 when Chrome still runs. Session cookies and
 // tabs don't survive it.
-const STOP_CHROME = `if pgrep -x chrome >/dev/null; then
+export const STOP_CHROME = `if pgrep -x chrome >/dev/null; then
   end=$(($(date +%s) + $2))
   timeout 5 node -e "fetch('http://127.0.0.1:9222/json/version').then(r => r.json()).then(v => { const s = new WebSocket(v.webSocketDebuggerUrl); s.onopen = () => s.send(JSON.stringify({ id: 1, method: 'Browser.close' })); s.onmessage = s.onclose = () => process.exit(0); s.onerror = () => process.exit(1); }, () => process.exit(1))" 9>&- || pkill -TERM -o -x chrome
   while pgrep -x chrome >/dev/null && [ "$(date +%s)" -lt "$end" ]; do sleep 0.25; done
@@ -289,7 +327,7 @@ const PLATFORM_UNWRITTEN = 4;
 const PLATFORM_UNREPORTED = 5;
 // `set-screen.sh <width> <height>`: switches the screen to that size, adding it as a RandR mode on first use, and
 // exits 0 once it runs at that size, 3 when the desktop started smaller (Xvfb can't grow past its start size), or 2
-// for a bad argument. xfwm4 keeps maximized windows maximized across the switch, and x11vnc (-xrandr) tells viewers.
+// for a bad argument. The output is the first connected one: Xvfb's is `screen`, an Xorg desktop's has another name. xfwm4 keeps maximized windows maximized across the switch, and x11vnc (-xrandr) tells viewers.
 // The dock's auto-hide stops hiding after a switch, covering the bottom of the page, so each auto-hiding panel's setting
 // is turned off and back on, which wakes it, once the panel has moved. Xvfb resets when its last client disconnects,
 // which drops added modes, so it runs only once the desktop's own clients are connected. Run as the desktop's user with
@@ -301,9 +339,10 @@ s=$(xrandr) || exit 1
 echo "$s" | grep -q "current $1 x $2," && exit 0
 set -- "$1" "$2" $(echo "$s" | sed -n 's/.*maximum \\([0-9]*\\) x \\([0-9]*\\).*/\\1 \\2/p')
 [ "$1" -le "$3" ] && [ "$2" -le "$4" ] || exit 3
+o=$(echo "$s" | awk '/ connected/ { print $1; exit }'); [ -n "$o" ] || o=screen
 xrandr --newmode "$1x$2" 0 "$1" 0 0 0 "$2" 0 0 0 2>/dev/null
-xrandr --addmode screen "$1x$2" 2>/dev/null
-xrandr --output screen --mode "$1x$2" || exit 1
+xrandr --addmode "$o" "$1x$2" 2>/dev/null
+xrandr --output "$o" --mode "$1x$2" || exit 1
 sleep 0.5
 for p in $(xfconf-query -c xfce4-panel -l 2>/dev/null | grep '/autohide-behavior$'); do
   v=$(xfconf-query -c xfce4-panel -p "$p") && [ "$v" != 0 ] && xfconf-query -c xfce4-panel -p "$p" -s 0 && xfconf-query -c xfce4-panel -p "$p" -s "$v"
@@ -401,10 +440,11 @@ process.exit(0);
 // overwrite the user's own clipboard. -xrandr: it follows the screen's size (SET_SCREEN) and tells viewers. An x11vnc
 // started before -xrandr, the newest flag, is replaced once it has exited, so one serves the display (vnc lists the
 // running ones; a zombie's cmdline is empty). Pasting goes through SET_CLIPBOARD instead.
-export const STREAM_PORT = 6080;
+// Not 6080, websockify's default, which Boat keeps for its own desktop stream.
+export const STREAM_PORT = 6090;
 const STREAM_DIR = '/tmp/live-view';
 // The traffic token guards the port only from outside: inside, any page the computer's Chrome visits can open a
-// WebSocket to 127.0.0.1:6080. So websockify upgrades only a handshake whose Origin is this, which the relay sends
+// WebSocket to 127.0.0.1 on STREAM_PORT. So websockify upgrades only a handshake whose Origin is this, which the relay sends
 // and no web page can (a browser always sends the page's own origin, a scheme and host, or "null"). Not a secret:
 // processes on the computer can reach the VNC socket anyway, and they already have the desktop.
 export const STREAM_ORIGIN = 'agent-computers-relay';
@@ -432,7 +472,8 @@ exit 1
 // behind the provider's traffic token. Each WebSocket handshake is passed to the browser's current endpoint (Chrome's
 // changes when it restarts) as a WebSocket handshake of Chrome's own, with only the handshake's headers and the Host
 // Chrome accepts, and then the bytes both ways. Like websockify's, it upgrades only a handshake whose Origin is
-// STREAM_ORIGIN, which no web page on the computer can send. It logs nothing.
+// STREAM_ORIGIN, which no web page on the computer can send, at the root (a provider's proxy may leave its own query on
+// it). It logs nothing.
 export const CDP_PORT = 9223;
 const CDP_BRIDGE_DIR = '/tmp/cdp-bridge';
 export const CDP_BRIDGE_JS = `import { createServer } from 'node:http';
@@ -442,7 +483,7 @@ const refuse = (socket, status) => socket.end('HTTP/1.1 ' + status + '\\r\\nConn
 const server = createServer((request, response) => response.writeHead(404).end());
 server.on('upgrade', async (request, socket, head) => {
   socket.on('error', () => socket.destroy());
-  if (request.headers.origin !== '${STREAM_ORIGIN}' || request.url !== '/') return refuse(socket, '403 Forbidden');
+  if (request.headers.origin !== '${STREAM_ORIGIN}' || request.url.split('?')[0] !== '/') return refuse(socket, '403 Forbidden');
   let path;
   try {
     const version = await fetch('http://127.0.0.1:9222/json/version', { signal: AbortSignal.timeout(${CDP_BRIDGE_VERSION_MS}) }).then(response => response.json());
@@ -707,24 +748,31 @@ export const keysym = (key: string) => {
   return key.length === 1 ? lower : key;
 };
 
-function session(sandbox: Sandbox): ComputerSession {
+// A computer's session on any machine (Machine). privateDir holds cookie payloads and pasteDir live view's pastes while
+// they're in flight; on a provider that snapshots disks in the background, both should be in memory. rebooted: the
+// machine restarted since its last connect (ComputerSession.rebooted).
+export function desktopSession(
+  machine: Machine,
+  {
+    privateDir = SYNC_DIR,
+    pasteDir = STREAM_DIR,
+    rebooted = false,
+  }: { privateDir?: string; pasteDir?: string; rebooted?: boolean } = {},
+): ComputerSession {
   // Resolves with xdotool's warnings (stderr), which name a key it ignored.
   const run = async (args: string) =>
-    (await sandbox.commands.run(`xdotool ${args}`, { envs: { DISPLAY: ':0' }, timeoutMs: XDOTOOL_MS })).stderr;
+    (await machine.run(`xdotool ${args}`, { display: true, timeoutMs: XDOTOOL_MS })).stderr;
   const xdotool = async (args: string) => {
     await run(args);
   };
-  const ensureChrome = (timeoutMs = ENSURE_CHROME_MS) =>
-    sandbox.commands.run(`${HELPER_DIR}/ensure-chrome.sh`, { timeoutMs });
+  const ensureChrome = (timeoutMs = ENSURE_CHROME_MS) => machine.run(`${HELPER_DIR}/ensure-chrome.sh`, { timeoutMs });
   const cdp: ComputerSession['cdp'] = async input => {
     const payload = Buffer.from(JSON.stringify(input)).toString('base64');
     // Computers built from an older template exit non-zero when Chrome is down (kept until the user resets it).
     try {
-      return (
-        await sandbox.commands.run(`node ${HELPER_DIR}/cdp.mjs ${payload}`, { timeoutMs: CDP_COMMAND_MS })
-      ).stdout.trim();
+      return (await machine.run(`node ${HELPER_DIR}/cdp.mjs ${payload}`, { timeoutMs: CDP_COMMAND_MS })).stdout.trim();
     } catch (error) {
-      if (error instanceof CommandExitError) return JSON.stringify({ error: 'cdp_unavailable' });
+      if (error instanceof CommandExit) return JSON.stringify({ error: 'cdp_unavailable' });
       throw error;
     }
   };
@@ -735,8 +783,9 @@ function session(sandbox: Sandbox): ComputerSession {
     return targets.filter(target => target.type === 'page');
   };
   return {
-    isPrivate: !!sandbox.trafficAccessToken,
-    screenshot: () => sandbox.screenshot(),
+    isPrivate: machine.isPrivate,
+    rebooted,
+    screenshot: () => machine.screenshot(),
     // Direct xdotool, one command per action: the SDK's `mousemove --sync` can stall ~15s.
     async act(action) {
       const button = { left: 1, middle: 2, right: 3 } as const;
@@ -756,7 +805,7 @@ function session(sandbox: Sandbox): ComputerSession {
             `${action.x !== undefined && action.y !== undefined ? `mousemove ${action.x} ${action.y} ` : ''}click --repeat ${action.amount} ${action.direction === 'up' ? 4 : 5}`,
           );
         case 'type':
-          return sandbox.write(action.text, { chunkSize: 50, delayInMs: TYPE_KEY_DELAY_MS });
+          return machine.type(action.text);
         case 'key': {
           // The keys reach a command line unquoted, so a key name must not reach it unchecked.
           const keys = [action.keys].flat();
@@ -766,7 +815,7 @@ function session(sandbox: Sandbox): ComputerSession {
           return;
         }
         case 'wait':
-          return sandbox.wait(action.ms);
+          return new Promise(resolve => setTimeout(resolve, action.ms));
       }
     },
     cdp,
@@ -780,14 +829,14 @@ function session(sandbox: Sandbox): ComputerSession {
       });
       try {
         // envd rejects a missing cwd as an SDK error; cd makes it an ordinary exit 1 with stderr.
-        const run = await sandbox.commands.run(cwd ? `cd -- ${quote(cwd)} || exit 1\n${command}` : command, {
+        const run = await machine.run(cwd ? `cd -- ${quote(cwd)} || exit 1\n${command}` : command, {
           user: 'user',
           timeoutMs: timeoutSeconds * 1000,
         });
-        return result(run.exitCode, run.stdout, run.stderr);
+        return result(0, run.stdout, run.stderr);
       } catch (error) {
-        if (error instanceof CommandExitError) return result(error.exitCode, error.stdout, error.stderr);
-        if (error instanceof TimeoutError) return result(null, '', '', true);
+        if (error instanceof CommandExit) return result(error.exitCode, error.stdout, error.stderr);
+        if (error instanceof CommandTimeout) return result(null, '', '', true);
         throw error;
       }
     },
@@ -810,7 +859,7 @@ function session(sandbox: Sandbox): ComputerSession {
     },
     // Unlike connect, which only ever extends it, this also shortens the timeout. Bounded: the caller
     // may hold a lock across it.
-    setTimeout: timeoutMs => sandbox.setTimeout(timeoutMs, { requestTimeoutMs: PROVIDER_REQUEST_MS }),
+    setTimeout: timeoutMs => machine.setTimeout(timeoutMs),
     // Brings a computer made from an older template to REVISION: rewrites the helpers as root, then restarts
     // Chrome on them. SIGTERM is Chrome's graceful exit, so cookies and the profile reach disk and sign-ins
     // stay; open tabs close. A Chrome that does not exit in time is killed. A computer already on REVISION
@@ -822,7 +871,7 @@ function session(sandbox: Sandbox): ComputerSession {
         if (ms < SYNC_MARGIN_MS) throw new Error('refresh budget exceeded');
         return ms;
       };
-      const { stdout } = await sandbox.commands.run(
+      const { stdout } = await machine.run(
         `test "$(cat ${REVISION_FILE} 2>/dev/null)" = ${REVISION} && echo current && exit 0; mkdir -p ${HELPER_DIR} && ${writeHelpers()} && echo stale`,
         { user: 'root', timeoutMs: left(REFRESH_STEP_MS.write) },
       );
@@ -830,12 +879,12 @@ function session(sandbox: Sandbox): ComputerSession {
       // The browser process is the oldest `chrome`; its renderers and zygotes exit with it.
       const stopMs = left(REFRESH_STEP_MS.stop);
       const polls = Math.max(1, Math.floor((stopMs - SYNC_MARGIN_MS) / 500));
-      await sandbox.commands.run(
+      await machine.run(
         `pkill -TERM -o -x chrome || exit 0; for i in $(seq 1 ${polls}); do pgrep -x chrome >/dev/null || exit 0; sleep 0.5; done; pkill -KILL -x chrome; sleep 0.5`,
         { user: 'user', timeoutMs: stopMs },
       );
       await ensureChrome(left(REFRESH_STEP_MS.start));
-      await sandbox.commands.run(`echo ${REVISION} > ${REVISION_FILE}`, {
+      await machine.run(`echo ${REVISION} > ${REVISION_FILE}`, {
         user: 'root',
         timeoutMs: left(REFRESH_STEP_MS.stamp),
       });
@@ -850,15 +899,15 @@ function session(sandbox: Sandbox): ComputerSession {
       if (!timeZonePattern.test(timeZone)) throw new Error('Invalid time zone');
       const end = Date.now() + budgetMs;
       const zone = quote(`/usr/share/zoneinfo/${timeZone}`);
-      await sandbox.commands.run(
-        `test -f ${zone} && ln -sf ${zone} /etc/localtime && echo ${quote(timeZone)} > /etc/timezone`,
-        { user: 'root', timeoutMs: Math.min(TIME_ZONE_MS, budgetMs) },
-      );
+      await machine.run(`test -f ${zone} && ln -sf ${zone} /etc/localtime && echo ${quote(timeZone)} > /etc/timezone`, {
+        user: 'root',
+        timeoutMs: Math.min(TIME_ZONE_MS, budgetMs),
+      });
       const left = end - Date.now();
       if (left < SYNC_MARGIN_MS) throw new Error('time zone budget exceeded');
       const helper = `${HELPER_DIR}/match-zone.sh`;
       const stopSeconds = Math.max(1, Math.floor(Math.min(PROFILE_STOP_MS, left / 3) / 1000));
-      await sandbox.commands.run(`if [ -x ${helper} ]; then ${helper} ${timeZone} ${stopSeconds}; fi`, {
+      await machine.run(`if [ -x ${helper} ]; then ${helper} ${timeZone} ${stopSeconds}; fi`, {
         user: 'user',
         timeoutMs: left,
       });
@@ -881,12 +930,12 @@ function session(sandbox: Sandbox): ComputerSession {
       const inside = budgetMs - waitSeconds * 1000 - SYNC_MARGIN_MS;
       if (inside < LANGUAGES_HELPER_MIN_MS) throw new Error('languages budget exceeded');
       try {
-        await sandbox.commands.run(
+        await machine.run(
           `${LOCKED(String(waitSeconds))}; echo ${tags} > ${file}.new && mv -f ${file}.new ${file} || exit ${LANGUAGES_UNWRITTEN}; test "${currentProfile}" = ${profile} && test -f ${helper} && curl -sf http://127.0.0.1:9222/json/version >/dev/null || exit 0; exec node ${helper} ${tags} ${inside} 9>&-`,
           { user: 'user', timeoutMs: budgetMs },
         );
       } catch (error) {
-        if (error instanceof CommandExitError) throw languagesError(error.exitCode, error.stdout);
+        if (error instanceof CommandExit) throw languagesError(error.exitCode, error.stdout);
         throw error;
       }
     },
@@ -911,12 +960,12 @@ function session(sandbox: Sandbox): ComputerSession {
       const polls = Math.floor(inside / 250);
       let stdout: string;
       try {
-        ({ stdout } = await sandbox.commands.run(
+        ({ stdout } = await machine.run(
           `${LOCKED(String(waitSeconds))}; ${write} || exit ${PLATFORM_UNWRITTEN}; test "${currentProfile}" = ${profile} && test -x ${HELPER_DIR}/platform-supervisor.sh && curl -sf http://127.0.0.1:9222/json/version >/dev/null || exit 0; ${SUPERVISE_PLATFORM}; for i in $(seq 1 ${polls}); do ${reported} && { cat ${PLATFORM_STATUS} 2>/dev/null; exit 0; }; sleep 0.25; done; exit ${PLATFORM_UNREPORTED}`,
           { user: 'user', timeoutMs: budgetMs },
         ));
       } catch (error) {
-        if (!(error instanceof CommandExitError)) throw error;
+        if (!(error instanceof CommandExit)) throw error;
         const code =
           error.exitCode === PLATFORM_UNWRITTEN
             ? 'platform_unwritten'
@@ -942,14 +991,14 @@ function session(sandbox: Sandbox): ComputerSession {
     async setScreen(screen) {
       const { width, height } = SCREENS[screen];
       try {
-        await sandbox.commands.run(`${HELPER_DIR}/set-screen.sh ${width} ${height}`, {
+        await machine.run(`${HELPER_DIR}/set-screen.sh ${width} ${height}`, {
           user: 'user',
-          envs: { DISPLAY: ':0' },
+          display: true,
           timeoutMs: SCREEN_MS,
         });
         return true;
       } catch (error) {
-        if (error instanceof CommandExitError && error.exitCode === 3) return false;
+        if (error instanceof CommandExit && error.exitCode === 3) return false;
         throw error;
       }
     },
@@ -961,7 +1010,7 @@ function session(sandbox: Sandbox): ComputerSession {
       const helper = `${HELPER_DIR}/use-profile.sh`;
       const stopSeconds = Math.max(1, Math.floor(Math.min(PROFILE_STOP_MS, budgetMs / 3) / 1000));
       const older = profile === FIRST_PROFILE ? `${HELPER_DIR}/ensure-chrome.sh` : 'exit 3';
-      await sandbox.commands.run(`if [ -x ${helper} ]; then ${helper} ${profile} ${stopSeconds}; else ${older}; fi`, {
+      await machine.run(`if [ -x ${helper} ]; then ${helper} ${profile} ${stopSeconds}; else ${older}; fi`, {
         user: 'user',
         timeoutMs: budgetMs,
       });
@@ -974,7 +1023,7 @@ function session(sandbox: Sandbox): ComputerSession {
     async syncCookies({ profile, clearSites, cookies, budgetMs }) {
       if (!PROFILE_PATTERN.test(profile)) throw new Error('Invalid profile');
       const helper = `${SYNC_DIR}/sync-cookies.mjs`;
-      const payload = `${SYNC_DIR}/sync-${randomUUID()}.json`;
+      const payload = `${privateDir}/sync-${randomUUID()}.json`;
       const end = Date.now() + budgetMs;
       const left = (cap: number) => {
         const ms = Math.min(cap, end - Date.now());
@@ -984,16 +1033,16 @@ function session(sandbox: Sandbox): ComputerSession {
       try {
         await ensureChrome(left(SYNC_STEP_MS.chrome));
         // Also removes payloads left by a run that was killed before its cleanup.
-        await sandbox.commands.run(
-          `umask 077 && mkdir -p ${SYNC_DIR} && chmod 700 ${SYNC_DIR} && find ${SYNC_DIR} -maxdepth 1 -name 'sync-*.json' -mmin +${SYNC_PAYLOAD_STALE_MINUTES} -delete && : > ${payload} && chmod 600 ${payload}`,
+        await machine.run(
+          `umask 077 && mkdir -p ${SYNC_DIR} ${privateDir} && chmod 700 ${SYNC_DIR} ${privateDir} && find ${privateDir} -maxdepth 1 -name 'sync-*.json' -mmin +${SYNC_PAYLOAD_STALE_MINUTES} -delete && : > ${payload} && chmod 600 ${payload}`,
           { user: 'user', timeoutMs: left(SYNC_STEP_MS.prepare) },
         );
-        await sandbox.files.write(
+        await machine.write(
           [
             { path: helper, data: SYNC_HELPER },
             { path: payload, data: JSON.stringify({ clearSites, cookies }) },
           ],
-          { user: 'user', requestTimeoutMs: left(SYNC_STEP_MS.upload) },
+          left(SYNC_STEP_MS.upload),
         );
         // Lock wait plus the helper's own exit timer stay a margin inside what is left.
         const timeoutMs = left(SYNC_STEP_MS.helper);
@@ -1002,7 +1051,7 @@ function session(sandbox: Sandbox): ComputerSession {
         if (inside < SYNC_HELPER_MIN_MS) throw new Error('sync budget exceeded');
         const waitSeconds = Math.min(10, Math.floor(inside / 3000));
         const node = `test "${currentProfile}" = ${profile} && exec node ${helper} ${payload} ${inside - waitSeconds * 1000}`;
-        const { stdout } = await sandbox.commands.run(
+        const { stdout } = await machine.run(
           `umask 077 && chmod 600 ${helper} ${payload} && if command -v flock >/dev/null; then flock -w ${waitSeconds} ${SYNC_LOCK} sh -c ${quote(node)}; else sh -c ${quote(node)}; fi`,
           { user: 'user', timeoutMs },
         );
@@ -1012,43 +1061,37 @@ function session(sandbox: Sandbox): ComputerSession {
         // Command errors can echo helper output; never let it reach logs.
         throw new Error('cookie sync failed');
       } finally {
-        await sandbox.files.remove(payload, { user: 'user', requestTimeoutMs: SYNC_STEP_MS.cleanup }).catch(() => {});
+        await machine.remove(payload, SYNC_STEP_MS.cleanup).catch(() => {});
       }
     },
     // A computer without a traffic token accepts public traffic: starting the stream there would put its desktop,
     // with input, on a public URL. A computer not yet refreshed to a revision with the helper runs it inline.
     async stream(budgetMs) {
-      const token = sandbox.trafficAccessToken;
-      if (!token) throw new Error('computer accepts public traffic');
+      const endpoint = await machine.endpoint(STREAM_PORT);
+      if (!endpoint) throw new Error('computer accepts public traffic');
       const helper = `${HELPER_DIR}/live-view-stream.sh`;
       const inline = `echo ${Buffer.from(LIVE_VIEW_STREAM).toString('base64')} | base64 -d | sh`;
-      await sandbox.commands.run(`if [ -x ${helper} ]; then ${helper}; else ${inline}; fi`, {
+      await machine.run(`if [ -x ${helper} ]; then ${helper}; else ${inline}; fi`, {
         user: 'user',
         timeoutMs: Math.min(budgetMs, STREAM_START_MS + STREAM_MARGIN_MS),
       });
-      return {
-        url: `wss://${sandbox.getHost(STREAM_PORT)}/`,
-        headers: { 'e2b-traffic-access-token': token, origin: STREAM_ORIGIN },
-      };
+      return { url: endpoint.url, headers: { ...endpoint.headers, origin: STREAM_ORIGIN } };
     },
     // As stream() does, refused on a computer that accepts public traffic, whose bridge port would put Chrome's DevTools
     // on a public URL. Chrome first, since the user may have quit it; then the bridge, inline on a computer whose
     // refresh has not yet brought the helper.
     async cdpEndpoint(budgetMs) {
-      const token = sandbox.trafficAccessToken;
-      if (!token) throw new Error('computer accepts public traffic');
       const end = Date.now() + budgetMs;
+      const endpoint = await machine.endpoint(CDP_PORT);
+      if (!endpoint) throw new Error('computer accepts public traffic');
       await ensureChrome(Math.min(budgetMs, ENSURE_CHROME_MS));
       const helper = `${HELPER_DIR}/cdp-bridge.sh`;
       const inline = `echo ${Buffer.from(CDP_BRIDGE).toString('base64')} | base64 -d | sh`;
-      await sandbox.commands.run(`if [ -x ${helper} ]; then ${helper}; else ${inline}; fi`, {
+      await machine.run(`if [ -x ${helper} ]; then ${helper}; else ${inline}; fi`, {
         user: 'user',
         timeoutMs: Math.max(1, Math.min(end - Date.now(), CDP_BRIDGE_START_MS + STREAM_MARGIN_MS)),
       });
-      return {
-        url: `wss://${sandbox.getHost(CDP_PORT)}/`,
-        headers: { 'e2b-traffic-access-token': token, origin: STREAM_ORIGIN },
-      };
+      return { url: endpoint.url, headers: { ...endpoint.headers, origin: STREAM_ORIGIN } };
     },
     // The text or image goes in a file, never argv, which the helper deletes once read; a failed run removes it here. A
     // computer not yet refreshed to a revision with the helper runs it inline, and an image always does, since an older
@@ -1062,7 +1105,7 @@ function session(sandbox: Sandbox): ComputerSession {
         if (ms <= 0) throw new Error('clipboard budget exceeded');
         return ms;
       };
-      const file = `${STREAM_DIR}/clipboard-${randomUUID()}`;
+      const file = `${pasteDir}/clipboard-${randomUUID()}`;
       const helper = `${HELPER_DIR}/set-clipboard.py`;
       const inline = `python3 -c "$(echo ${Buffer.from(SET_CLIPBOARD).toString('base64')} | base64 -d)"`;
       const command =
@@ -1070,21 +1113,60 @@ function session(sandbox: Sandbox): ComputerSession {
           ? `if [ -f ${helper} ]; then python3 ${helper} ${file}; else ${inline} ${file}; fi`
           : `${inline} ${file} image/png`;
       try {
-        await sandbox.files.write(file, typeof content === 'string' ? content : new Blob([content.png]), {
+        await machine.write([{ path: file, data: typeof content === 'string' ? content : content.png }], left());
+        await machine.run(command, {
           user: 'user',
-          requestTimeoutMs: left(),
-        });
-        await sandbox.commands.run(command, {
-          user: 'user',
-          envs: { DISPLAY: ':0' },
+          display: true,
           timeoutMs: left(),
         });
       } catch (error) {
-        await sandbox.files.remove(file, { user: 'user', requestTimeoutMs: cleanupMs }).catch(() => {});
-        if (error instanceof CommandExitError) throw new Error(`set-clipboard exited ${error.exitCode}`);
+        await machine.remove(file, cleanupMs).catch(() => {});
+        if (error instanceof CommandExit) throw new Error(`set-clipboard exited ${error.exitCode}`);
         throw error;
       }
     },
+  };
+}
+
+// An E2B sandbox as a Machine. E2B runs commands as `user` by default, and throws its own errors for an exit and a
+// timeout, which become CommandExit and CommandTimeout. Its ports need the traffic token, sent as a header.
+function e2bMachine(sandbox: Sandbox): Machine {
+  const token = sandbox.trafficAccessToken;
+  return {
+    async run(command, { user, display, timeoutMs }) {
+      try {
+        const { stdout, stderr } = await sandbox.commands.run(command, {
+          ...(user && { user }),
+          ...(display && { envs: { DISPLAY: ':0' } }),
+          timeoutMs,
+        });
+        return { stdout, stderr };
+      } catch (error) {
+        if (error instanceof CommandExitError) throw new CommandExit(error.exitCode, error.stdout, error.stderr);
+        if (error instanceof TimeoutError) throw new CommandTimeout();
+        throw error;
+      }
+    },
+    async write(files, timeoutMs) {
+      const options = { user: 'user', requestTimeoutMs: timeoutMs } as const;
+      const blob = (data: string | Uint8Array<ArrayBuffer>) => (typeof data === 'string' ? data : new Blob([data]));
+      const [only] = files;
+      if (files.length === 1 && only) await sandbox.files.write(only.path, blob(only.data), options);
+      else
+        await sandbox.files.write(
+          files.map(({ path, data }) => ({ path, data: blob(data) })),
+          options,
+        );
+    },
+    async remove(path, timeoutMs) {
+      await sandbox.files.remove(path, { user: 'user', requestTimeoutMs: timeoutMs });
+    },
+    screenshot: () => sandbox.screenshot(),
+    type: text => sandbox.write(text, { chunkSize: 50, delayInMs: TYPE_KEY_DELAY_MS }),
+    setTimeout: timeoutMs => sandbox.setTimeout(timeoutMs, { requestTimeoutMs: PROVIDER_REQUEST_MS }),
+    endpoint: async port =>
+      token ? { url: `wss://${sandbox.getHost(port)}/`, headers: { 'e2b-traffic-access-token': token } } : null,
+    isPrivate: !!token,
   };
 }
 
@@ -1135,7 +1217,8 @@ export function e2bComputerProvider(
     },
     async connect(sandboxId, timeoutMs) {
       // Connecting resumes a paused computer; on a running one it only extends the timeout.
-      return session(await Sandbox.connect(sandboxId, { ...account, timeoutMs }));
+      // E2B never reboots a computer: a pause keeps its memory.
+      return desktopSession(e2bMachine(await Sandbox.connect(sandboxId, { ...account, timeoutMs })));
     },
     async pause(sandboxId) {
       // Memory and filesystem; false (already paused) is fine. Bounded like setTimeout.

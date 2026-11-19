@@ -1370,6 +1370,25 @@ describe('apply on open', () => {
     expect(jar()).toEqual(['agent.dev:tmp=agent', 'example.com:sid=fresh']);
     expect((await applied()).syncedSites).toEqual(['example.com']);
   });
+  it('replaces every synced site again after the computer rebooted while paused, which lost its session cookies', async () => {
+    const a = await user('a');
+    await saveFromBrowser(
+      db,
+      a,
+      bundle(
+        [cookie(), cookie({ name: 'visit', session: true, expirationDate: undefined })],
+        new Date('2026-10-15T10:00:00Z'),
+      ),
+    );
+    await reopen(a);
+    expect(jar()).toEqual(['example.com:sid=local', 'example.com:visit=local']);
+    fake.reboot([...fake.sandboxes.keys()].at(-1)!);
+    expect(jar()).toEqual(['example.com:sid=local']);
+    // The same capture, which an unchanged baseline would skip.
+    expect((await reopen(a)).sync).toMatchObject({ status: 'applied', sitesUpdated: 1 });
+    expect(jar()).toEqual(['example.com:sid=local', 'example.com:visit=local']);
+    expect((await reopen(a)).sync).toMatchObject({ status: 'unchanged' });
+  });
   it('sets only what the host changed: the host wins its changes, the computer keeps the rest', async () => {
     const a = await user('a');
     await saveFromBrowser(

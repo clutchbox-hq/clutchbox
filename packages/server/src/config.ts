@@ -27,9 +27,11 @@ const envSchema = z.object({
     .refine(value => ['smtp:', 'smtps:'].includes(new URL(value).protocol))
     .optional(),
   SMTP_FROM: optional,
-  // The organization's E2B account for computers (providerFromConfig).
+  // The organization's E2B or Boat account for computers (providerFromConfig); Boat's when both are set.
   E2B_API_KEY: optional,
   E2B_COMPUTER_TEMPLATE: optional,
+  BOAT_API_KEY: optional,
+  BOAT_COMPUTER_SNAPSHOT: optional,
   // Other agents' client_id URLs, comma separated, besides Claude's and ChatGPT's (agentClientUrls).
   AGENT_CLIENT_URLS: optional,
 });

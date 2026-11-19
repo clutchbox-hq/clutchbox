@@ -10,6 +10,7 @@ import { Sandbox as BaseSandbox, CommandExitError, InvalidArgumentError } from '
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CDP_HELPER,
+  CommandExit,
   e2bComputerProvider,
   HELPERS,
   PLATFORM_SUPERVISOR,
@@ -427,7 +428,7 @@ describe('E2B adapter', () => {
       expect.objectContaining({ user: 'user', envs: { DISPLAY: ':0' } }),
     );
     expect(await session.setScreen('1920x1200')).toBe(false);
-    await expect(session.setScreen('1920x1200')).rejects.toThrow(CommandExitError);
+    await expect(session.setScreen('1920x1200')).rejects.toThrow(CommandExit);
   });
   it('creates private computers and starts live view only on one with a traffic token (E2B adapter)', async () => {
     const run = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }));
@@ -457,7 +458,7 @@ describe('E2B adapter', () => {
     expect(session.isPrivate).toBe(true);
     // websockify accepts only this Origin, which no page in the computer's Chrome can send.
     expect(await session.stream(15_000)).toEqual({
-      url: 'wss://6080-sandbox.e2b.app/',
+      url: 'wss://6090-sandbox.e2b.app/',
       headers: { 'e2b-traffic-access-token': 'token', origin: STREAM_ORIGIN },
     });
     expect(run).toHaveBeenLastCalledWith(

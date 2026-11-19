@@ -67,6 +67,10 @@ E2B_API_KEY=e2b_your_key bun run computer:template
 
 The build makes every size. To build and use another name, set `E2B_COMPUTER_TEMPLATE` for both. Existing computers keep the template they started from until you reset them, or change their size, on the Computer page.
 
+## Computers on Boat
+
+Set `BOAT_API_KEY` instead of `E2B_API_KEY` to run computers on your [Boat](https://boat.dev) account (with both set, Boat runs them). Build the snapshot new computers start from with `BOAT_API_KEY=… bun run --cwd packages/boat build-template`; until it exists (Boat's trial saves none), each new computer installs it first, which adds 10 to 20 seconds. Boat has no pause that keeps memory: a pause quits Chrome, so open tabs close and session cookies come back with the next open's full apply, and a computer stopped for 14 days loses its disk. See [`packages/boat`](../../packages/boat).
+
 ## Without Docker
 
 With [Bun](https://bun.sh), Node 24, and your own Postgres: `bun install`, copy [`apps/web/.env.example`](.env.example) to `.env.local` beside it and fill it in, `DATABASE_URL` included, load it into your shell (`set -a; . ./.env.local; set +a` there), then, from the repository root, `bun run build:web` and `MIGRATE_ON_START=true bun run start:web` (`HOST` and `PORT` choose the address; default `0.0.0.0:3000`). That serves the whole app, the API included. To run the API on its own as Compose does, `bun run start:api` on another `PORT` serves the API's paths without the pages, and needs no build; set `TRUST_PROXY=true` on both behind a proxy that routes those paths to it and overwrites `X-Forwarded-For`. For development, run `bun run db:migrate` and then `bun run dev:web`, and build the extension yourself with `WXT_SERVER_ORIGIN=http://localhost:3000 bun run build:extension` and load `apps/extension/.output/chrome-mv3`; live view needs the built server.

@@ -165,6 +165,10 @@ export interface ComputerSession {
   // Whether the computer refuses traffic without the provider's token. One created before that accepts
   // public traffic until it is reset, and live view refuses it.
   readonly isPrivate: boolean;
+  // Whether the computer restarted since it was last connected, on a provider with no pause that keeps memory (Boat):
+  // its processes and tabs are gone, and so are session cookies and cookies Chrome had not yet written to disk, so the
+  // next apply replaces every synced site rather than only what changed. False on a new computer.
+  readonly rebooted?: boolean;
 }
 // Thrown by a provider on an account its owner brought (such as an organization's own E2B API key) when the provider
 // refuses that account: the key was revoked, or the account can't pay. Only someone who manages the account can fix it.

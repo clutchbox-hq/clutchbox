@@ -52,10 +52,6 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@clutchbox/apply": "workspace:*",
-    "@clutchbox/capture": "workspace:*",
-    "@clutchbox/computer": "workspace:*",
-    "@clutchbox/e2b": "workspace:*",
     "@better-auth/api-key": "1.7.11",
     "@better-auth/cimd": "1.7.11",
     "@better-auth/core": "1.7.11",
@@ -63,6 +59,11 @@
     "@better-auth/mcp": "1.7.11",
     "@better-auth/oauth-provider": "1.7.11",
     "@better-auth/utils": "0.5.0",
+    "@clutchbox/apply": "workspace:*",
+    "@clutchbox/boat": "workspace:*",
+    "@clutchbox/capture": "workspace:*",
+    "@clutchbox/computer": "workspace:*",
+    "@clutchbox/e2b": "workspace:*",
     "@vercel/functions": "3.10.1",
     "better-auth": "1.7.11",
     "drizzle-orm": "0.45.4",

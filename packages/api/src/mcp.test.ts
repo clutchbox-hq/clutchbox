@@ -1274,7 +1274,7 @@ describe('computer tools', () => {
         const fromPage = await tool(token, 'computer_exec', {
           session_id: id,
           command:
-            "curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://example.com' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' http://127.0.0.1:6080/",
+            "curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://example.com' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' http://127.0.0.1:6090/",
         });
         expect(fromPage.result.structuredContent).toMatchObject({ exit_code: 0, stdout: '403' });
         const link = (await tool(token, 'computer_download', { session_id: id, path: '/home/user/Downloads/live.txt' }))
