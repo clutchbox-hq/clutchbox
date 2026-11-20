@@ -47,6 +47,11 @@ export const SNAPSHOT = 'clutchbox-computer';
 // Boat writes files only under /home/user and /tmp.
 export const PRIVATE_DIR = '/tmp/clutchbox';
 const UP_MARKER = `${PRIVATE_DIR}/up`;
+// Chrome's profile locks, which name the host and process that held them: a Chrome that didn't quit (a stop on Boat's
+// own timeout, or the snapshot's build) leaves them, and the next Chrome refuses a profile locked by another host. Only
+// cleared while no Chrome runs.
+export const CLEAR_CHROME_LOCKS =
+  'pgrep -x chrome >/dev/null || rm -f /home/user/.config/agent-computers-chrome*/Singleton*';
 // The screen last set, on disk, for a rebooted computer to come back at: Boat's desktop starts at 1920x1080.
 const SCREEN_FILE = '/home/user/.config/clutchbox-screen';
 // Boat's sizes match ours: small is 2 vCPU · 4 GB, default 4 vCPU · 8 GB.
@@ -148,7 +153,7 @@ export function boatMachine(boat: BoatApi, sandboxId: string): Machine {
 // the machine rebooted since the last call: the marker in the mount is gone with it.
 async function prepare(machine: Machine): Promise<{ rebooted: boolean }> {
   const { stdout } = await machine.run(
-    `sh -c ${quote(PRIVATE_MEMORY_DIR)} sh ${PRIVATE_DIR} || exit 1; if [ -e ${UP_MARKER} ]; then echo up; else : > ${UP_MARKER}; echo rebooted; fi; ${HELPER_DIR}/ensure-chrome.sh >/dev/null 2>&1`,
+    `sh -c ${quote(PRIVATE_MEMORY_DIR)} sh ${PRIVATE_DIR} || exit 1; if [ -e ${UP_MARKER} ]; then echo up; else : > ${UP_MARKER}; echo rebooted; fi; ${CLEAR_CHROME_LOCKS}; ${HELPER_DIR}/ensure-chrome.sh >/dev/null 2>&1`,
     { display: true, timeoutMs: ENSURE_CHROME_MS },
   );
   return { rebooted: stdout.trim() === 'rebooted' };
@@ -218,7 +223,7 @@ export function boatComputerProvider({
       } while (cursor);
       return null;
     },
-    // Boat stops the sandbox timeoutMs after the call unless called again. A computer that fails to start is stopped.
+    // Boat stops the sandbox timeoutMs after the call unless called again. A computer that fails to start is deleted, since nothing on it is worth keeping.
     async create(computerId, timeoutMs, size) {
       const options = {
         type: TYPES[size],
@@ -242,7 +247,7 @@ export function boatComputerProvider({
         await prepare(machine);
         await (await boatSession(machine, false)).setScreen(DEFAULT_SCREEN);
       } catch (error) {
-        await boat.stop({ sandboxId: sandbox.id }, request()).catch(() => {});
+        await boat.deleteSandbox({ sandboxId: sandbox.id, xAsciiConfirmDelete: sandbox.id }, request()).catch(() => {});
         throw error;
       }
       return sandbox.id;

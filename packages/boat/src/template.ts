@@ -1,6 +1,6 @@
 import { BoatApi, type CommandResponse, Configuration, ResponseError, waitUntilReady } from '@boatdev/sdk';
-import { HELPER_DIR } from '@clutchbox/e2b';
-import { SNAPSHOT } from './index.ts';
+import { HELPER_DIR, STOP_CHROME } from '@clutchbox/e2b';
+import { CLEAR_CHROME_LOCKS, SNAPSHOT } from './index.ts';
 import { runSetup } from './setup.ts';
 import { READY_MS } from './timing.ts';
 
@@ -19,7 +19,7 @@ export async function buildComputerSnapshot(
     log(await runSetup(boat, sandbox.id));
     const chrome = (await boat.command({
       sandboxId: sandbox.id,
-      command: `${HELPER_DIR}/ensure-chrome.sh && sleep 3 && pkill -TERM -o -x chrome; sleep 3; pgrep -x chrome >/dev/null && pkill -KILL -x chrome; true`,
+      command: `export DISPLAY=:0; ${HELPER_DIR}/ensure-chrome.sh && sleep 3; set -- chrome 10\n${STOP_CHROME}\n${CLEAR_CHROME_LOCKS}`,
       timeoutSeconds: 120,
     })) as CommandResponse;
     if (chrome.exitCode !== 0) throw new Error(`Chrome's first start exited ${chrome.exitCode}`);
