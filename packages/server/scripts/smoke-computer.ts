@@ -356,7 +356,9 @@ try {
   checks.helperServing = await helperRunning();
   // x11vnc's first clipboard read waits 15 s from the first viewer: then it sends the pasted text, which the page writes
   // to the user's clipboard, so it must arrive as UTF-8 rather than lossy Latin-1.
+  // Up to 10 s more, for a slow computer (once on Boat from CI).
   await sleep(Math.max(0, connected + 17_000 - Date.now()));
+  for (let i = 0; i < 20 && !(await cutTexts()).length; i++) await sleep(500);
   checks.echo = (await cutTexts()).at(-1);
   // A copy in Chrome takes the clipboard back, which ends the helper, and reaches the viewer.
   await evaluate('document.querySelector("textarea").value = "copied ✓ 日本"');
